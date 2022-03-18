@@ -106,7 +106,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 
 To use the script within other R code, the commandline arguments can be over-ridden with a vector of commandline arguments named `override`. For example, the code that generated the example plot:
 
-``
+```
 override <- c("focus=Opossum","basefile=zoomarsupials","busco=zoomarsupials.busco.fofn","sequences=zoomarsupials.sequences.fofn","orphans=F")
 source("chromsyn.R")
 ```
