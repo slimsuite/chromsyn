@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.3.0`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.4.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -85,6 +85,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
+# : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
 # : minregion=X = minimum length for mapped regions to be included in plots [50000]
 # : minbusco=X = minimum number of BUSCO genes to be included in Syntenic block [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
@@ -98,6 +99,8 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : pdfheight=NUM = over-ride for standard calculated PDF height [0]
 # : pdfscale=NUM = over-ride for PDF output scale [1]
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
+# : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
+# : labels=T/F = whether to print chromosome name labels [TRUE]
 # : debug=T/F = whether to switch on additional debugging outputs [FALSE]
 # : dev=T/F = whether to switch on dev mode during code updates [FALSE]
 ```
