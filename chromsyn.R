@@ -1,6 +1,6 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.4.0                             ~~~~~ ###
+### VERSION: 0.5.0                             ~~~~~ ###
 ### LAST EDIT: 22/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
@@ -14,18 +14,19 @@
 # v0.2.0 : Added orphans=T/F to control whether scaffolds without BUSCO genes should be plotted. Added regdata=TSV input.
 # v0.3.0 : Added excel file output. Added names to chromsyn plots.
 # v0.4.0 : Added some additional controls for the chromosome labels, plus minlen=INT filter.
-version = "v0.4.0"
+# v0.5.0 : Added optional reading of Tel5 and Tel3 files from sequences table. Swapped meaning of seqsort and seqorder. Added PNG output.
+version = "v0.5.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
-# Rscript chromsyn.R [sequences=FOFN] [busco=FOFN] [focus=X] [seqsort=LIST] [order=LIST] [basefile=FILE] [minregion=INTbp] [align=X]
-# : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name and length fields) [sequences.fofn]
+# Rscript chromsyn.R [sequences=FOFN] [busco=FOFN] [focus=X] [seqorder=LIST] [order=LIST] [basefile=FILE] [minregion=INTbp] [align=X]
+# : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
 # : busco=FOFN = File of PREFIX FILE with full BUSCO table results. Used to identify orthologous regions. [busco.fofn]
 # : regdata=TSV = File of Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
-# : seqorder=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
-# : seqsort=LIST = Optional ordering of the chromsomes for the focal assembly
+# : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
+# : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
@@ -45,6 +46,7 @@ version = "v0.4.0"
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
 # : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
 # : labels=T/F = whether to print chromosome name labels [TRUE]
+# : opacity=NUM = Opacity of synteny regions (0-1) [0.3]
 # : debug=T/F = whether to switch on additional debugging outputs [FALSE]
 # : dev=T/F = whether to switch on dev mode during code updates [FALSE]
 
@@ -70,15 +72,18 @@ version = "v0.4.0"
 #!# Test settings for pdfwidth and pdfheight over-ride.
 #!# Need to enable no loading of BUSCO data if regdata=TSV is given.
 #!# Add output of synteny block table.
-#!# Swap seqorder and seqsort!
-#!# Add optional loading of a telomere file and marking telomeres on plots.
+#!# Get bitmap output working. (Resolution is awful for unknown reasons so disabled)
+# : pngscale=INT = PDF to PNG scaling [100]
+# : pointsize=NUM = PNG text point size [24]
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="",
-                minregion=50000,align="justify",ygap=4,seqsort="",orient="auto",seqorder="auto",
-                pngwidth=1200,pngheight=900,pointsize=16,plotdir="./",
-                minbusco=1,maxskip=0,orphans=TRUE,minlen=0,
+                minregion=50000,align="justify",ygap=4,seqorder="",orient="auto",seqsort="auto",
+                #pngwidth=1200,pngheight=900,
+                #pointsize=24,pngscale=100,
+                plotdir="./",
+                minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,
                 pdfwidth=20,pdfheight=0,pdfscale=1,namesize=1,labelsize=1,labels=TRUE,
                 scale = "Mb",textshift = 0.3,ticks=5e7,rscript=TRUE,
                 basefile="chromsyn",focus="",debug=FALSE,dev=FALSE,
@@ -98,13 +103,19 @@ for(cmd in argvec){
     settings[[cmdv[1]]] = TRUE    
   }
 }
-for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen")){
+for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale")){
   settings[[cmd]] = as.integer(settings[[cmd]])
 }
-for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize")){
+for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity")){
   settings[[cmd]] = as.numeric(settings[[cmd]])
 }
-for(cmd in c("order","seqsort")){
+if(settings$opacity < 0.1){
+  settings$opacity <- 0.1
+}
+if(settings$opacity > 1){
+  settings$opacity <- 1
+}
+for(cmd in c("order","seqorder")){
   if(length(settings[[cmd]]) > 0){
     settings[[cmd]] = strsplit(settings[[cmd]],',',TRUE)[[1]]
   }else{
@@ -159,7 +170,8 @@ if(settings$writexl){
 #i# Load delimited file into FOFN table (genome, file)
 #i# fofndb = fileTable(filename,delimit="\t")
 fileTable <- function(filename,delimit=" "){
-  regdb <- read.table(filename,fill=TRUE,sep=delimit,header=FALSE,row.names = NULL,quote="\"",comment.char="")
+  regdb <- read.table(filename,fill=TRUE,sep=delimit,header=FALSE,row.names = NULL,quote="\"",comment.char="") %>%
+    select(1:2)
   colnames(regdb) <- c("Genome","Filename")
   logWrite(paste('#FOFN',nrow(regdb),"filenames loaded from",filename))
   return(regdb)
@@ -171,7 +183,18 @@ fileTable <- function(filename,delimit=" "){
 seqTable <- function(genome,filename,delimit="\t"){
   regdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
   regdb$Genome <- genome
-  regdb <- regdb %>% rename(SeqName=name,SeqLen=length) %>% select(Genome,SeqName,SeqLen)
+  if("name" %in% colnames(regdb)){
+    regdb <- regdb %>% rename(SeqName=name,SeqLen=length)
+  }
+  if(! "Tel5" %in% colnames(regdb)){
+    regdb$Tel5 <- FALSE
+    regdb$Tel3 <- FALSE
+  }
+  regdb$Tel5 <- as.logical(regdb$Tel5)
+  regdb$Tel5[is.na(regdb$Tel5)] <- FALSE
+  regdb$Tel3 <- as.logical(regdb$Tel3)
+  regdb$Tel3[is.na(regdb$Tel3)] <- FALSE
+  regdb <- regdb %>% select(Genome,SeqName,SeqLen,Tel5,Tel3)
   logWrite(paste('#SEQS',nrow(regdb),genome,"sequences loaded from",filename))
   regdb <- regdb[regdb$SeqLen >= settings$minlen,]
   logWrite(paste('#SEQS',nrow(regdb),genome,"sequences meet minlen cutoff of",settings$minlen,"bp"))
@@ -550,30 +573,30 @@ for(i in 1:nrow(seqdb)){
 }
 
 ### ~ Establish ordering of sequences based on focus ~~~~~~~~~~~~~~~~~~~ ###
-#!# Will want to add settings$seqorder=FILE to over-ride individual genome ordering
-if(! settings$seqorder %in% c("auto","none","focus")){
-  if(file.exists(settings$seqorder)){
-    logWrite(paste0("Not yet implemented seqorder=FILE (",settings$seqorder,"): set to 'auto'."))
-    settings$seqorder <- "auto"
+#!# Will want to add settings$seqsort=FILE to over-ride individual genome ordering
+if(! settings$seqsort %in% c("auto","none","focus")){
+  if(file.exists(settings$seqsort)){
+    logWrite(paste0("Not yet implemented seqorder=FILE (",settings$seqsort,"): set to 'auto'."))
+    settings$seqsort <- "auto"
   }
   else{
-    logWrite(paste0("Could not recognise/find seqorder=",settings$seqorder," (auto/focus/none/FILE): set to 'auto'."))
-    settings$seqorder <- "auto"
+    logWrite(paste0("Could not recognise/find seqorder=",settings$seqsort," (auto/focus/none/FILE): set to 'auto'."))
+    settings$seqsort <- "auto"
   }
 }
 #i# Set up the seqorder list. This will have focus and anything loaded from settings$seqorder
 seqorder <- list()
-seqorder[[settings$focus]] <- c(settings$seqsort, seqdb[seqdb$Genome==settings$focus & ! seqdb$SeqName %in% settings$seqsort,]$SeqName)
-#i# seqorder=none will just order by sequence name
-if(settings$seqorder == "none"){
+seqorder[[settings$focus]] <- c(settings$seqorder, seqdb[seqdb$Genome==settings$focus & ! seqdb$SeqName %in% settings$seqorder,]$SeqName)
+#i# seqsort=none will just order by sequence name
+if(settings$seqsort == "none"){
   #?# Or might want to have options for sorting by length
   for(genome in settings$order[!settings$order %in% names(seqorder)]){
     seqorder[[genome]] <- seqdb$SeqName[seqdb$Genome == genome]
     logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
   }
 }
-#i# seqorder=focus will map everything to the focus species
-if(settings$seqorder == "focus"){
+#i# seqsort=focus will map everything to the focus species
+if(settings$seqsort == "focus"){
   #i# posdb is only used here, for ordering sequences.
   posdb <- ungroup(bestdb) %>% filter(HitGenome==settings$focus)
   posdb$Order <- match(posdb$Hit,seqorder[[settings$focus]])
@@ -583,8 +606,8 @@ if(settings$seqorder == "focus"){
     logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
   }
 }
-#i# seqorder=auto will use the orientation focus (genfocus)
-if(settings$seqorder == "auto"){
+#i# seqsort=auto will use the orientation focus (genfocus)
+if(settings$seqsort == "auto"){
   while(length(seqorder) < length(settings$order)){
     for(genome in settings$order[!settings$order %in% names(seqorder)]){
       myfocus <- genfocus[[genome]]
@@ -708,6 +731,17 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   # Bottom ticks
   pD <- data.frame(x=tickx,y=ticky+1,yend=ticky+1+(settings$textshift/2))
   plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
+  # Telomeres
+  pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
+  pD <- pD[ (pD$Tel5 & ! pD$Rev) | (pD$Tel3 & pD$Rev), ]
+  if(nrow(pD)){
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y,fill=Genome))
+  }
+  pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
+  pD <- pD[ (pD$Tel5 & pD$Rev) | (pD$Tel3 & ! pD$Rev), ]
+  if(nrow(pD)){
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y,fill=Genome))
+  }
   cat("Generating plot", file = stderr())
 
   #i# Then, plot the linkages
@@ -750,11 +784,11 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
       if(fwd){
         pD <- data.frame(x=c(xa1,xa2,xb2,xb1), y=c(ya,ya,yb,yb))
         plt <- plt + 
-          geom_polygon(data=pD,mapping=aes(x=x, y=y),fill="steelblue", color=NA, alpha=0.2) 
+          geom_polygon(data=pD,mapping=aes(x=x, y=y),fill="steelblue", color=NA, alpha=settings$opacity) 
       }else{
         pD <- data.frame(x=c(xa1,xa2,xb1,xb2), y=c(ya,ya,yb,yb))
         plt <- plt + 
-          geom_polygon(data=pD,mapping=aes(x=x, y=y),fill="indianred", color=NA, alpha=0.2) 
+          geom_polygon(data=pD,mapping=aes(x=x, y=y),fill="indianred", color=NA, alpha=settings$opacity) 
       }
       
     }
@@ -801,14 +835,34 @@ while(is.na(plt) & plotsplits < linknum){
             cat(linkages)
           }
           plt <- chromSynPlot(gendb,seqdb,regdb,linkages)
-          plotfile <- paste0(settings$basefile,"-",px,".pdf")
+          plotbase <- paste0(settings$basefile,"-",px)
         }else{
           plt <- chromSynPlot(gendb,seqdb,regdb)
-          plotfile <- paste0(settings$basefile,".pdf")
+          plotbase <- settings$basefile
         }
         print(plt)
+        plotfile <- paste0(plotbase,".pdf")
         ggsave(plotfile,plot=plt,device="pdf",path=settings$plotdir,width=pdfwidth,height=pdfheight,scale=settings$pdfscale)
         logWrite(paste0('#GGSAVE Saved output plot to ',settings$plotdir,plotfile))
+
+        #plotfile <- paste0(plotbase,".png")
+        #ggsave(plotfile,plot=plt,device="png",path=settings$plotdir,width=pdfwidth*30,height=pdfheight*30,units="px",scale=settings$pdfscale)
+        #logWrite(paste0('#GGSAVE Saved output plot to ',settings$plotdir,plotfile))
+        
+        # pngfile <- paste0(plotbase,".png")
+        # pngwidth <- as.integer(pdfwidth * settings$pngscale)
+        # pngheight <- as.integer(pdfheight * settings$pngscale)
+        # #png(pngfile,width=pngwidth,height=pngheight,pointsize=settings$pointsize)
+        # png(pngfile,width=pdfwidth,height=pdfheight,units="in",pointsize=settings$pointsize,res=settings$pngscale)
+        # print(plt)
+        # dev.off()
+        # logWrite(paste0('#PNG Saved output plot to ',settings$plotdir,pngfile))
+        # 
+        # pngfile <- paste0(plotbase,".jpeg")
+        # jpeg(pngfile,width=pdfwidth,height=pdfheight,units="in",pointsize=settings$pointsize,res=settings$pngscale)
+        # print(plt)
+        # dev.off()
+        # logWrite(paste0('#PNG Saved output plot to ',settings$plotdir,pngfile))
       }
     },
     error = function(e){

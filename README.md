@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.4.0`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.5.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -42,6 +42,8 @@ One easy way to generate this input:
 python $SLIMSUITE/tools/seqsuite.py -seqin $FASTA -seqmode db -summarise dna -basefile ${FASTA/.fasta/} i=-1
 ```
 
+(Better still, run [Diploidocus](https://github.com/slimsuite/diploidocus) in telomere mode for telomeres to be plotted too - details and updated example output to follow.)
+
 **Step 4.** Make the FOFN files, e.g.:
 
 ```
@@ -70,24 +72,26 @@ The main output is one or more [chromosome synteny plots](https://github.com/sli
 
 **NOTE:** ChromSyn will try to generate a single synteny plot. However, where there are many synteny blocks and rearrangements, system resources for R are sometimes exceeded. In this case, multiple plots will be produced that each contain a subset of the pairwise synteny comparisons. These can then be manually combined into a single figure.
 
+**NOTE:** Example figure needs to be updated with telomeres plotted.
+
 ## Options
 
 A more detailed descriptions of options and use cases will be added in time. The following options can be provided in the form `argument=value` to alter inputs and/or outputs:
 
 ```
-# : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name and length fields) [sequences.fofn]
+# : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
 # : busco=FOFN = File of PREFIX FILE with full BUSCO table results. Used to identify orthologous regions. [busco.fofn]
 # : regdata=TSV = File of Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
-# : seqorder=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
-# : seqsort=LIST = Optional ordering of the chromsomes for the focal assembly
+# : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
+# : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
-# : minregion=X = minimum length for mapped regions to be included in plots [50000]
-# : minbusco=X = minimum number of BUSCO genes to be included in Syntenic block [1]
+# : minregion=INT = minimum length for mapped regions to be included in plots [50000]
+# : minbusco=INT = minimum number of BUSCO genes to be included in Syntenic block [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
 # : orphans=T/F = whether to include scaffolds that have no BUSCO genes [True]
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
@@ -101,6 +105,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
 # : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
 # : labels=T/F = whether to print chromosome name labels [TRUE]
+# : opacity=NUM = Opacity of synteny regions (0-1) [0.3]
 # : debug=T/F = whether to switch on additional debugging outputs [FALSE]
 # : dev=T/F = whether to switch on dev mode during code updates [FALSE]
 ```
