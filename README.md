@@ -44,6 +44,10 @@ python $SLIMSUITE/tools/seqsuite.py -seqin $FASTA -seqmode db -summarise dna -ba
 
 (Better still, run [Diploidocus](https://github.com/slimsuite/diploidocus) in telomere mode for telomeres to be plotted too - details and updated example output to follow.)
 
+Version 0.6.0 introduced a new optional input of TIDK search output:
+
+* `tidk.fofn` = file of file names for TIDK search results (`search/*_telomeric_repeat_windows.csv`)
+
 **Step 4.** Make the FOFN files, e.g.:
 
 ```
