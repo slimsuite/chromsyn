@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.5.0`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.6.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -81,6 +81,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 ```
 # : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
 # : busco=FOFN = File of PREFIX FILE with full BUSCO table results. Used to identify orthologous regions. [busco.fofn]
+# : tidk=FOFN = Optional file of PREFIX FILE with TIDK search results. [tidk.fofn]
 # : regdata=TSV = File of Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
@@ -94,6 +95,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : minbusco=INT = minimum number of BUSCO genes to be included in Syntenic block [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
 # : orphans=T/F = whether to include scaffolds that have no BUSCO genes [True]
+# : tidkcutoff=INT = TIDK count cutoff for identifying a telomere [50]
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
 # : scale=X = units in basepairs for setting the x-axis scale [Mb]

@@ -1,6 +1,6 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.5.0                             ~~~~~ ###
+### VERSION: 0.6.0                             ~~~~~ ###
 ### LAST EDIT: 22/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
@@ -14,14 +14,16 @@
 # v0.2.0 : Added orphans=T/F to control whether scaffolds without BUSCO genes should be plotted. Added regdata=TSV input.
 # v0.3.0 : Added excel file output. Added names to chromsyn plots.
 # v0.4.0 : Added some additional controls for the chromosome labels, plus minlen=INT filter.
-# v0.5.0 : Added optional reading of Tel5 and Tel3 files from sequences table. Swapped meaning of seqsort and seqorder. Added PNG output.
-version = "v0.5.0"
+# v0.5.0 : Added optional reading of Tel5 and Tel3 files from sequences table. Swapped meaning of seqsort and seqorder. 
+# v0.6.0 : Added optional TIDK parsing for additional telomere prediction.
+version = "v0.6.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
 # Rscript chromsyn.R [sequences=FOFN] [busco=FOFN] [focus=X] [seqorder=LIST] [order=LIST] [basefile=FILE] [minregion=INTbp] [align=X]
 # : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
 # : busco=FOFN = File of PREFIX FILE with full BUSCO table results. Used to identify orthologous regions. [busco.fofn]
+# : tidk=FOFN = Optional file of PREFIX FILE with TIDK search results. [tidk.fofn]
 # : regdata=TSV = File of Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
@@ -35,6 +37,7 @@ version = "v0.5.0"
 # : minbusco=INT = minimum number of BUSCO genes to be included in Syntenic block [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
 # : orphans=T/F = whether to include scaffolds that have no BUSCO genes [True]
+# : tidkcutoff=INT = TIDK count cutoff for identifying a telomere [50]
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
 # : scale=X = units in basepairs for setting the x-axis scale [Mb]
@@ -75,6 +78,7 @@ version = "v0.5.0"
 #!# Get bitmap output working. (Resolution is awful for unknown reasons so disabled)
 # : pngscale=INT = PDF to PNG scaling [100]
 # : pointsize=NUM = PNG text point size [24]
+#!# Add loading of optional ftdb FOFN of features to plot with SeqName, Pos and optional Strand ("."), Color and Shape
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -83,6 +87,7 @@ defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="
                 #pngwidth=1200,pngheight=900,
                 #pointsize=24,pngscale=100,
                 plotdir="./",
+                tidkcutoff=50,tidk="tidk.fofn",
                 minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,
                 pdfwidth=20,pdfheight=0,pdfscale=1,namesize=1,labelsize=1,labels=TRUE,
                 scale = "Mb",textshift = 0.3,ticks=5e7,rscript=TRUE,
@@ -103,7 +108,7 @@ for(cmd in argvec){
     settings[[cmdv[1]]] = TRUE    
   }
 }
-for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale")){
+for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff")){
   settings[[cmd]] = as.integer(settings[[cmd]])
 }
 for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity")){
@@ -250,6 +255,30 @@ regTable <- function(filename,delimit="\t"){
   return(regdb)
 }
 
+### ~ Load TIDK File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+#i# Load delimited file into TIDK table (Genome, Seqname, SeqWin, Tel5, Tel3, TelSeq)
+#i# Headers: id,window,forward_repeat_number,reverse_repeat_number,telomeric_repeat
+#i# tidkdb = tidkTable(genome,filename,delimit=",")
+tidkTable <- function(genome,filename,delimit=","){
+  tidkdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
+  colnames(tidkdb) <- c("SeqName", "SeqWin", "Tel5", "Tel3", "TelSeq")
+  tidkdb$Genome <- genome
+  tidkdb <- tidkdb[tidkdb$Tel5 >= settings$tidkcutoff | tidkdb$Tel3 >= settings$tidkcutoff,] 
+  tidk <- select(tidkdb, Genome, SeqName, SeqWin, Tel5, Tel3)
+  #i# Strand and Pos conversion
+  tel5 <- tidk[tidk$Tel5 >= settings$tidkcutoff,] %>% mutate(Pos=SeqWin, Strand="+") %>% select(Genome, SeqName, Pos, Strand)
+  # if(nrow(tel5)){
+  #   tel5$Strand <- "+"
+  # }
+  tel3 <- tidk[tidk$Tel3 >= settings$tidkcutoff,] %>% mutate(Pos=SeqWin, Strand="-") %>% select(Genome, SeqName, Pos, Strand)
+  # if(nrow(tel3)){
+  #   tel3$Strand <- "-"
+  # }
+  tidkdb <- bind_rows(tel5,tel3) 
+  #?# Check the fields: Genome, SeqName, Pos, Strand
+  logWrite(paste('#TIDK',nrow(tidkdb),"TIDK telomere windows loaded from",filename))
+  return(tidkdb)
+}
 
 ##### ======================== Sequence stats functions ======================== #####
 
@@ -308,8 +337,14 @@ if(! file.exists(buscofofn) & settings$regdata == ""){
     stop(paste("Cannot find BUSCO FOFN file:",buscofofn))
   }
 }
+#i# TIDK tables
+tidkfofn = settings$tidk
+if(file.exists(tidkfofn)){
+  logWrite(paste("TIDK FOFN file:",tidkfofn))
+}else{
+  logWrite(paste("TIDK FOFN file not found:",tidkfofn))
+}
 logWrite('#RCODE Setup complete.')
-
 
 ##### ======================== Load data ======================== #####
 
@@ -323,6 +358,12 @@ if(length(settings$order)<1 | (length(settings$order)==1 & settings$order[1] == 
 logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
 #i# Combine into table
 gendb <- inner_join(seqfiles,buscofiles)
+if(file.exists(tidkfofn)){
+  tidkfiles <- fileTable(settings$tidk) %>% rename(TIDK=Filename)
+  gendb <- inner_join(gendb,tidkfiles)
+}else{
+  gendb$TIDK <- NA
+}
 settings$order[settings$order %in% gendb$Genome]
 gendb <- gendb %>% filter(Genome %in% settings$order)
 rownames(gendb) <- gendb$Genome
@@ -331,6 +372,7 @@ genomes <- settings$order
 #i# Load actual sequence and busco data
 seqdb <- data.frame()
 busdb <- data.frame()
+teldb <- data.frame()
 for(genome in genomes){
   #i# Sequences
   filename <- gendb[genome,"SeqFile"]
@@ -347,9 +389,19 @@ for(genome in genomes){
   }else{
     busdb <- buscoTable(genome,filename,newseqdb$SeqName)
   }
+  #i# TIDK
+  filename <- gendb[genome,"TIDK"]
+  if(! is.na(filename)){
+    if(nrow(teldb) > 0){
+      teldb <- bind_rows(teldb,tidkTable(genome,filename))
+    }else{
+      teldb <- tidkTable(genome,filename)
+    }
+  }
 }
 logWrite(paste("#SEQS ",nrow(seqdb),"sequences loaded in total."))
 logWrite(paste("#BUSCO ",nrow(busdb),"BUSCO genes loaded in total."))
+logWrite(paste("#TIDK ",nrow(teldb),"TIDK telomere windows loaded in total."))
 busdb <- filter(busdb,SeqName %in% seqdb$SeqName)
 logWrite(paste("#BUSCO ",nrow(busdb),"BUSCO genes for loaded sequences."))
 
@@ -669,6 +721,22 @@ for(genome in settings$order){
   }
 }
 
+### ~ TIDK Telomeres ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+#i# Combine with seqdb to get xshift and yshift
+#i# Update teldb to have the correct xshift and yshift information, reversing where needed
+teldb <- right_join(teldb,seqdb)
+teldb <- teldb[! is.na(teldb$Pos),]
+if(nrow(teldb)){
+  teldb$RevPos <- teldb$SeqLen - teldb$Pos + 1
+  teldb$RevStrand <- '+'
+  teldb[teldb$Strand == '+',]$RevStrand <- '-'
+  #i# Reverse the strand and position where needed for plotting
+  teldb[teldb$Rev, ]$Strand <- teldb[teldb$Rev, ]$RevStrand
+  teldb[teldb$Rev, ]$Pos <- teldb[teldb$Rev, ]$RevPos
+  teldb$yshift <- teldb$yshift + 0.25
+  teldb[teldb$Strand == '-',]$yshift <- teldb[teldb$Strand == '-',]$yshift + 0.5
+}
+
 ##### ======================== Save data to Excel ======================== #####
 ### ~ Save data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 if(settings$writexl){
@@ -735,13 +803,19 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
   pD <- pD[ (pD$Tel5 & ! pD$Rev) | (pD$Tel3 & pD$Rev), ]
   if(nrow(pD)){
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y,fill=Genome))
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y),colour="black")
   }
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
   pD <- pD[ (pD$Tel5 & pD$Rev) | (pD$Tel3 & ! pD$Rev), ]
   if(nrow(pD)){
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y,fill=Genome))
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y),colour="black")
   }
+  # TIDK internal widnows
+  if(nrow(teldb)){
+    pD <- teldb %>% mutate(xpos=(xshift+Pos)/rescale)
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour="blue")
+  }
+
   cat("Generating plot", file = stderr())
 
   #i# Then, plot the linkages
