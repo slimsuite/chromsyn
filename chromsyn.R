@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.6.0                             ~~~~~ ###
-### LAST EDIT: 22/03/22                        ~~~~~ ###
+### VERSION: 0.7.0                             ~~~~~ ###
+### LAST EDIT: 23/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ########################################################
@@ -16,7 +16,8 @@
 # v0.4.0 : Added some additional controls for the chromosome labels, plus minlen=INT filter.
 # v0.5.0 : Added optional reading of Tel5 and Tel3 files from sequences table. Swapped meaning of seqsort and seqorder. 
 # v0.6.0 : Added optional TIDK parsing for additional telomere prediction.
-version = "v0.6.0"
+# v0.7.0 : Add PNG output and optional gap and feature table parsing.
+version = "v0.7.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -24,6 +25,8 @@ version = "v0.6.0"
 # : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
 # : busco=FOFN = File of PREFIX FILE with full BUSCO table results. Used to identify orthologous regions. [busco.fofn]
 # : tidk=FOFN = Optional file of PREFIX FILE with TIDK search results. [tidk.fofn]
+# : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
+# : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
 # : regdata=TSV = File of Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
@@ -79,6 +82,7 @@ version = "v0.6.0"
 # : pngscale=INT = PDF to PNG scaling [100]
 # : pointsize=NUM = PNG text point size [24]
 #!# Add loading of optional ftdb FOFN of features to plot with SeqName, Pos and optional Strand ("."), Color and Shape
+#!# Add file checks and error messages!
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -87,7 +91,7 @@ defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="
                 #pngwidth=1200,pngheight=900,
                 #pointsize=24,pngscale=100,
                 plotdir="./",
-                tidkcutoff=50,tidk="tidk.fofn",
+                tidkcutoff=50,tidk="tidk.fofn",gaps="gaps.fofn",ft="ft.fofn",
                 minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,
                 pdfwidth=20,pdfheight=0,pdfscale=1,namesize=1,labelsize=1,labels=TRUE,
                 scale = "Mb",textshift = 0.3,ticks=5e7,rscript=TRUE,
@@ -174,11 +178,15 @@ if(settings$writexl){
 ### ~ Load FOFN File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #i# Load delimited file into FOFN table (genome, file)
 #i# fofndb = fileTable(filename,delimit="\t")
-fileTable <- function(filename,delimit=" "){
+fileTable <- function(filename,delimit=" ",genomes=c()){
   regdb <- read.table(filename,fill=TRUE,sep=delimit,header=FALSE,row.names = NULL,quote="\"",comment.char="") %>%
     select(1:2)
   colnames(regdb) <- c("Genome","Filename")
   logWrite(paste('#FOFN',nrow(regdb),"filenames loaded from",filename))
+  if(length(genomes) > 0){
+    regdb <- regdb[regdb$Genome %in% genomes,]
+    logWrite(paste('#FOFN',nrow(regdb),"filenames after filtering to recognised genomes."))
+  }
   return(regdb)
 }
 
@@ -280,6 +288,38 @@ tidkTable <- function(genome,filename,delimit=","){
   return(tidkdb)
 }
 
+### ~ Load Feature/Gap File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+#i# Load delimited file into feature or gaps (Genome, Seqname, Pos, Strand, Col, Shape)
+#i# ftdb = ftTable(genome,filename,delimit=",")
+ftTable <- function(genome,filename,colour="darkgreen",shape=15){
+  delimit <- "\t"
+  if(endsWith(filename,".csv")){
+    delimit <- ","
+  }
+  ftdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
+  ftdb$Genome <- genome
+  for(ftfield in c("SeqName","Pos","Strand","Col","Shape","Start","End")){
+    if(tolower(ftfield) %in% colnames(ftdb)){
+      ftdb[[ftfield]] <- ftdb[[tolower(ftfield)]]
+    }
+  }
+  if(! "Pos" %in% colnames(ftdb)){
+    ftdb <- mutate(ftdb,Pos=(End+Start)/2)
+  }
+  if(! "Strand" %in% colnames(ftdb)){
+    ftdb$Strand <- "."  # Unstranded
+  }
+  if(! "Col" %in% colnames(ftdb)){
+    ftdb$Col <- colour  # Defaults to steelblue
+  }
+  if(! "Shape" %in% colnames(ftdb)){
+    ftdb$Shape <- shape  # Defaults to square (3 = + for gaps)
+  }
+  ftdb <- select(ftdb,Genome, SeqName, Pos, Strand, Col, Shape)
+  logWrite(paste('#FT',nrow(ftdb),"features loaded from",filename))
+  return(ftdb)
+}
+
 ##### ======================== Sequence stats functions ======================== #####
 
 ### ~ Sequence length ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -306,7 +346,7 @@ seqRev <- function(seqdb,genome,seqname){
 ##### ======================== Report key inputs ======================== #####
 
 ### ~ Key inputs ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
-#i# Sequences files
+#i# Sequences files = vital input
 seqfofn = settings$sequences
 logWrite(paste("Sequence FOFN File:",seqfofn))
 if(! file.exists(seqfofn)){
@@ -337,12 +377,17 @@ if(! file.exists(buscofofn) & settings$regdata == ""){
     stop(paste("Cannot find BUSCO FOFN file:",buscofofn))
   }
 }
-#i# TIDK tables
-tidkfofn = settings$tidk
-if(file.exists(tidkfofn)){
-  logWrite(paste("TIDK FOFN file:",tidkfofn))
-}else{
-  logWrite(paste("TIDK FOFN file not found:",tidkfofn))
+#i# Optional extra tables: TIDK, gaps, ft
+filechecks <- list(tidk="TIDK", gaps="Assembly gap", ft="features table")
+for(ftype in names(filechecks)){
+  ffile <- settings[[ftype]]
+  if(file.exists(ffile)){
+    logWrite(paste(filechecks[[ftype]],"FOFN file:",ffile))
+  }else{
+    if(ffile != ""){
+      logWrite(paste(filechecks[[ftype]],"FOFN file not found:",ffile))
+    }
+  }
 }
 logWrite('#RCODE Setup complete.')
 
@@ -351,19 +396,36 @@ logWrite('#RCODE Setup complete.')
 ### ~ Load sequence and BUSCO data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #i# Load file names
 seqfiles <- fileTable(settings$sequences) %>% rename(SeqFile=Filename)
-buscofiles <- fileTable(settings$busco) %>% rename(BUSCO=Filename)
+buscofiles <- fileTable(settings$busco,genomes=seqfiles$Genome) %>% rename(BUSCO=Filename)
 if(length(settings$order)<1 | (length(settings$order)==1 & settings$order[1] == "")){
   settings$order <- seqfiles$Genome
 }
 logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
 #i# Combine into table
 gendb <- inner_join(seqfiles,buscofiles)
-if(file.exists(tidkfofn)){
-  tidkfiles <- fileTable(settings$tidk) %>% rename(TIDK=Filename)
+# - TIDK
+if(file.exists(settings$tidk)){
+  tidkfiles <- fileTable(settings$tidk,genomes=seqfiles$Genome) %>% rename(TIDK=Filename)
   gendb <- inner_join(gendb,tidkfiles)
 }else{
   gendb$TIDK <- NA
 }
+# - gaps
+if(file.exists(settings$gaps)){
+  gapfiles <- fileTable(settings$gaps,genomes=seqfiles$Genome) %>% rename(gaps=Filename)
+  gendb <- inner_join(gendb,gapfiles)
+}else{
+  gendb$gaps <- NA
+}
+# - features
+if(file.exists(settings$ft)){
+  ftfiles <- fileTable(settings$ft,genomes=seqfiles$Genome) %>% rename(features=Filename)
+  gendb <- inner_join(gendb,ftfiles)
+}else{
+  gendb$features <- NA
+}
+
+#i# Update sequence order
 settings$order[settings$order %in% gendb$Genome]
 gendb <- gendb %>% filter(Genome %in% settings$order)
 rownames(gendb) <- gendb$Genome
@@ -373,6 +435,8 @@ genomes <- settings$order
 seqdb <- data.frame()
 busdb <- data.frame()
 teldb <- data.frame()
+gapdb <- data.frame()
+ftdb <- data.frame()
 for(genome in genomes){
   #i# Sequences
   filename <- gendb[genome,"SeqFile"]
@@ -396,6 +460,26 @@ for(genome in genomes){
       teldb <- bind_rows(teldb,tidkTable(genome,filename))
     }else{
       teldb <- tidkTable(genome,filename)
+    }
+  }
+  #i# Gaps
+  filename <- gendb[genome,"gaps"]
+  if(! is.na(filename)){
+    newdb <- ftTable(genome,filename,colour="red",shape=3)
+    if(nrow(gapdb) > 0){
+      gapdb <- bind_rows(gapdb,newdb)
+    }else{
+      gapdb <- newdb
+    }
+  }
+  #i# Features
+  filename <- gendb[genome,"features"]
+  if(! is.na(filename)){
+    newdb <- ftTable(genome,filename)
+    if(nrow(ftdb) > 0){
+      ftdb <- bind_rows(ftdb,newdb)
+    }else{
+      ftdb <- newdb
     }
   }
 }
@@ -491,6 +575,12 @@ if(settings$regdata != ""){
     regdb <- linkdb
   }
 }
+
+
+##### ======================== Update Gap Colours ======================== #####
+#!# To do:
+# - Gaps within synteny blocks go blue
+# - Gaps outside synteny blocks stay red
 
 
 ##### ======================== Calculate best matches between genomes ======================== #####
@@ -692,6 +782,7 @@ if(settings$seqsort == "auto"){
 #i# regdb sets the linkages
 
 ### ~ Establish max genome size, gaps and padding ~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+logWrite("Establish max genome size, gaps and padding")
 gendb <- group_by(seqdb,Genome) %>% summarise(Genome=first(Genome),GenLen=sum(SeqLen),SeqNum=n())
 xgap <- 0.01 * max(gendb$GenLen)
 maxlen <- max(gendb$GenLen + (gendb$SeqNum - 1) * xgap)
@@ -722,6 +813,7 @@ for(genome in settings$order){
 }
 
 ### ~ TIDK Telomeres ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+logWrite("TIDK Telomeres...")
 #i# Combine with seqdb to get xshift and yshift
 #i# Update teldb to have the correct xshift and yshift information, reversing where needed
 teldb <- right_join(teldb,seqdb)
@@ -736,6 +828,27 @@ if(nrow(teldb)){
   teldb$yshift <- teldb$yshift + 0.25
   teldb[teldb$Strand == '-',]$yshift <- teldb[teldb$Strand == '-',]$yshift + 0.5
 }
+
+### ~ Gaps and Features ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+logWrite("Gaps and Features...")
+#i# Combine with seqdb to get xshift and yshift
+#i# Update ftdb to have the correct xshift and yshift information, reversing where needed
+ftdb <- right_join(ftdb,seqdb)
+ftdb <- bind_rows(ftdb,right_join(gapdb,seqdb))
+ftdb <- ftdb[! is.na(ftdb$Pos),]
+if(nrow(ftdb)){
+  ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + 1
+  ftdb$RevStrand <- '.'
+  ftdb[ftdb$Strand == '+',]$RevStrand <- '-'
+  ftdb[ftdb$Strand == '-',]$RevStrand <- '+'
+  #i# Reverse the strand and position where needed for plotting
+  ftdb[ftdb$Rev, ]$Strand <- ftdb[ftdb$Rev, ]$RevStrand
+  ftdb[ftdb$Rev, ]$Pos <- ftdb[ftdb$Rev, ]$RevPos
+  ftdb$yshift <- ftdb$yshift + 0.5
+  ftdb[ftdb$Strand == '-',]$yshift <- ftdb[ftdb$Strand == '-',]$yshift - 0.4
+  ftdb[ftdb$Strand == '+',]$yshift <- ftdb[ftdb$Strand == '+',]$yshift + 0.4
+}
+
 
 ##### ======================== Save data to Excel ======================== #####
 ### ~ Save data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -799,6 +912,12 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   # Bottom ticks
   pD <- data.frame(x=tickx,y=ticky+1,yend=ticky+1+(settings$textshift/2))
   plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
+  # Features
+  #?# Could have a feature type field and map colour by type?
+  if(nrow(ftdb)){
+    pD <- ftdb %>% mutate(xpos=(xshift+Pos)/rescale)
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,shape=pD$Shape)
+  }
   # Telomeres
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
   pD <- pD[ (pD$Tel5 & ! pD$Rev) | (pD$Tel3 & pD$Rev), ]
@@ -810,7 +929,7 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   if(nrow(pD)){
     plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y),colour="black")
   }
-  # TIDK internal widnows
+  # TIDK internal windows
   if(nrow(teldb)){
     pD <- teldb %>% mutate(xpos=(xshift+Pos)/rescale)
     plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour="blue")
@@ -919,9 +1038,9 @@ while(is.na(plt) & plotsplits < linknum){
         ggsave(plotfile,plot=plt,device="pdf",path=settings$plotdir,width=pdfwidth,height=pdfheight,scale=settings$pdfscale)
         logWrite(paste0('#GGSAVE Saved output plot to ',settings$plotdir,plotfile))
 
-        #plotfile <- paste0(plotbase,".png")
-        #ggsave(plotfile,plot=plt,device="png",path=settings$plotdir,width=pdfwidth*30,height=pdfheight*30,units="px",scale=settings$pdfscale)
-        #logWrite(paste0('#GGSAVE Saved output plot to ',settings$plotdir,plotfile))
+        plotfile <- paste0(plotbase,".png")
+        ggsave(plotfile,plot=plt,device="png",path=settings$plotdir,width=pdfwidth,height=pdfheight,scale=settings$pdfscale)
+        logWrite(paste0('#GGSAVE Saved output plot to ',settings$plotdir,plotfile))
         
         # pngfile <- paste0(plotbase,".png")
         # pngwidth <- as.integer(pdfwidth * settings$pngscale)

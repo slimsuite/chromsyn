@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.6.0`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.7.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -47,6 +47,11 @@ python $SLIMSUITE/tools/seqsuite.py -seqin $FASTA -seqmode db -summarise dna -ba
 Version 0.6.0 introduced a new optional input of TIDK search output:
 
 * `tidk.fofn` = file of file names for TIDK search results (`search/*_telomeric_repeat_windows.csv`)
+
+Version 0.7.0 introduced a new optional input of assembly gaps (SeqSuite output) and features of interest:
+
+* `gaps.fofn` = file of file names for assembly gaps (`*.gaps.tdt`)
+* `ft.fofn` =  file of file names for features of interest (SeqName, Pos, [Strand,] [Col,] [Shape,])
 
 **Step 4.** Make the FOFN files, e.g.:
 
