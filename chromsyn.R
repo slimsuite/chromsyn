@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.7.0                             ~~~~~ ###
-### LAST EDIT: 23/03/22                        ~~~~~ ###
+### VERSION: 0.8.0                             ~~~~~ ###
+### LAST EDIT: 25/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ########################################################
@@ -17,7 +17,8 @@
 # v0.5.0 : Added optional reading of Tel5 and Tel3 files from sequences table. Swapped meaning of seqsort and seqorder. 
 # v0.6.0 : Added optional TIDK parsing for additional telomere prediction.
 # v0.7.0 : Add PNG output and optional gap and feature table parsing.
-version = "v0.7.0"
+# v0.8.0 : Added ypad setting to offset the syntenic block plotting a little for clarity. Added fill for open symbols.
+version = "v0.8.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -43,6 +44,7 @@ version = "v0.7.0"
 # : tidkcutoff=INT = TIDK count cutoff for identifying a telomere [50]
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
+# : ypad=NUM = proportion of ygap to extend synteny blocks before linking [0.1]
 # : scale=X = units in basepairs for setting the x-axis scale [Mb]
 # : textshift=NUM = offset for printing chromosome names [0.3]
 # : ticks=INT = distance between tickmarks [5e7]
@@ -87,7 +89,8 @@ version = "v0.7.0"
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="",
-                minregion=50000,align="justify",ygap=4,seqorder="",orient="auto",seqsort="auto",
+                minregion=50000,align="justify",ygap=4,ypad=0.1,
+                seqorder="",orient="auto",seqsort="auto",
                 #pngwidth=1200,pngheight=900,
                 #pointsize=24,pngscale=100,
                 plotdir="./",
@@ -115,7 +118,7 @@ for(cmd in argvec){
 for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff")){
   settings[[cmd]] = as.integer(settings[[cmd]])
 }
-for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity")){
+for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity","ypad")){
   settings[[cmd]] = as.numeric(settings[[cmd]])
 }
 if(settings$opacity < 0.1){
@@ -310,12 +313,17 @@ ftTable <- function(genome,filename,colour="darkgreen",shape=15){
     ftdb$Strand <- "."  # Unstranded
   }
   if(! "Col" %in% colnames(ftdb)){
-    ftdb$Col <- colour  # Defaults to steelblue
+    ftdb$Col <- colour  # Defaults to darkgreen
   }
   if(! "Shape" %in% colnames(ftdb)){
     ftdb$Shape <- shape  # Defaults to square (3 = + for gaps)
   }
-  ftdb <- select(ftdb,Genome, SeqName, Pos, Strand, Col, Shape)
+  ftdb$Fill <- ftdb$Col
+  openrow <- ftdb$Shape %in% 21:25
+  if(sum(openrow)){
+    ftdb[openrow,]$Col <- "black"
+  }
+  ftdb <- select(ftdb,Genome, SeqName, Pos, Strand, Col, Fill, Shape)
   logWrite(paste('#FT',nrow(ftdb),"features loaded from",filename))
   return(ftdb)
 }
@@ -465,7 +473,7 @@ for(genome in genomes){
   #i# Gaps
   filename <- gendb[genome,"gaps"]
   if(! is.na(filename)){
-    newdb <- ftTable(genome,filename,colour="red",shape=3)
+    newdb <- ftTable(genome,filename,colour="darkred",shape=3)
     if(nrow(gapdb) > 0){
       gapdb <- bind_rows(gapdb,newdb)
     }else{
@@ -833,9 +841,19 @@ if(nrow(teldb)){
 logWrite("Gaps and Features...")
 #i# Combine with seqdb to get xshift and yshift
 #i# Update ftdb to have the correct xshift and yshift information, reversing where needed
-ftdb <- right_join(ftdb,seqdb)
-ftdb <- bind_rows(ftdb,right_join(gapdb,seqdb))
-ftdb <- ftdb[! is.na(ftdb$Pos),]
+if(nrow(ftdb)){
+  ftdb <- right_join(ftdb,seqdb)
+  if(nrow(gapdb)){
+    ftdb <- bind_rows(ftdb,right_join(gapdb,seqdb))
+  }
+  ftdb <- ftdb[! is.na(ftdb$Pos),]
+}else{
+  if(nrow(gapdb)){
+    ftdb <- right_join(gapdb,seqdb)
+  }
+  ftdb <- ftdb[! is.na(ftdb$Pos),]
+}
+#i# Reverse the features where required
 if(nrow(ftdb)){
   ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + 1
   ftdb$RevStrand <- '.'
@@ -916,7 +934,7 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   #?# Could have a feature type field and map colour by type?
   if(nrow(ftdb)){
     pD <- ftdb %>% mutate(xpos=(xshift+Pos)/rescale)
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,shape=pD$Shape)
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,fill=pD$Fill,shape=pD$Shape)
   }
   # Telomeres
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
@@ -945,6 +963,8 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
     genomeb <- settings$order[v+1]
     ya <- gendb$yshift[gendb$Genome==genomea]
     yb <- gendb$yshift[gendb$Genome==genomeb] + 1
+    ya2 <- ya + (settings$ypad * (yb - ya))
+    yb2 <- yb - (settings$ypad * (yb - ya))
     plotdb <- regdb %>% filter(Genome==genomea,HitGenome==genomeb)
     #i# Process the links for the pair
     for(i in 1:nrow(plotdb)){
@@ -976,10 +996,16 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
       #i# Plot links
       if(fwd){
         pD <- data.frame(x=c(xa1,xa2,xb2,xb1), y=c(ya,ya,yb,yb))
+        if(settings$ypad){
+          pD <- data.frame(x=c(xa1,xa1,xa2,xa2,xb2,xb2,xb1,xb1), y=c(ya2,ya,ya,ya2,yb2,yb,yb,yb2))
+        }
         plt <- plt + 
           geom_polygon(data=pD,mapping=aes(x=x, y=y),fill="steelblue", color=NA, alpha=settings$opacity) 
       }else{
         pD <- data.frame(x=c(xa1,xa2,xb1,xb2), y=c(ya,ya,yb,yb))
+        if(settings$ypad){
+          pD <- data.frame(x=c(xa1,xa1,xa2,xa2,xb1,xb1,xb2,xb2), y=c(ya2,ya,ya,ya2,yb2,yb,yb,yb2))
+        }
         plt <- plt + 
           geom_polygon(data=pD,mapping=aes(x=x, y=y),fill="indianred", color=NA, alpha=settings$opacity) 
       }

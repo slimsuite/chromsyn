@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.7.0`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.8.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -52,6 +52,8 @@ Version 0.7.0 introduced a new optional input of assembly gaps (SeqSuite output)
 
 * `gaps.fofn` = file of file names for assembly gaps (`*.gaps.tdt`)
 * `ft.fofn` =  file of file names for features of interest (SeqName, Pos, [Strand,] [Col,] [Shape,])
+
+If the features have one of the open shapes (21-25), they will have a black border and use the `Col` value for the fill.
 
 **Step 4.** Make the FOFN files, e.g.:
 
@@ -107,6 +109,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : tidkcutoff=INT = TIDK count cutoff for identifying a telomere [50]
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
+# : ypad=NUM = proportion of ygap to extend synteny blocks before linking [0.1]
 # : scale=X = units in basepairs for setting the x-axis scale [Mb]
 # : textshift=NUM = offset for printing chromosome names [0.3]
 # : ticks=INT = distance between tickmarks [5e7]
@@ -126,7 +129,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 To use the script within other R code, the commandline arguments can be over-ridden with a vector of commandline arguments named `override`. For example, the code that generated the example plot:
 
 ```
-override <- c("focus=Opossum","basefile=zoomarsupials","busco=zoomarsupials.busco.fofn","sequences=zoomarsupials.sequences.fofn","orphans=F")
+override <- c("basefile=zoomarsupials","busco=zoomarsupials.busco.fofn","sequences=zoomarsupials.sequences.fofn","tidk=zoomarsupials.tidk.fofn","ft=zoomarsupials.ft.fofn","gaps=FALSE","orphans=F","minlen=1e6","focus=Wombat")
 source("chromsyn.R")
 ```
 
