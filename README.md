@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.8.0`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.9.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -99,6 +99,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
 # : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
+# : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, Type or Col) [Genome]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]

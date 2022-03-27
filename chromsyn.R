@@ -1,6 +1,6 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.8.0                             ~~~~~ ###
+### VERSION: 0.9.0                             ~~~~~ ###
 ### LAST EDIT: 25/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
@@ -18,7 +18,8 @@
 # v0.6.0 : Added optional TIDK parsing for additional telomere prediction.
 # v0.7.0 : Add PNG output and optional gap and feature table parsing.
 # v0.8.0 : Added ypad setting to offset the syntenic block plotting a little for clarity. Added fill for open symbols.
-version = "v0.8.0"
+# v0.9.0 : Added chromfill setting to control the colouring of chromosomes by Genome, Type or Col.
+version = "v0.9.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -34,6 +35,7 @@ version = "v0.8.0"
 # : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
 # : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
+# : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName Type or Col) [Genome]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
@@ -78,19 +80,19 @@ version = "v0.8.0"
 #!# Add to BUSCOMP
 #!# Test ability to skip missing BUSCO genes if needed
 #!# Test settings for pdfwidth and pdfheight over-ride.
-#!# Need to enable no loading of BUSCO data if regdata=TSV is given.
+#!# Need to test no loading of BUSCO data if regdata=TSV is given.
 #!# Add output of synteny block table.
 #!# Get bitmap output working. (Resolution is awful for unknown reasons so disabled)
 # : pngscale=INT = PDF to PNG scaling [100]
 # : pointsize=NUM = PNG text point size [24]
-#!# Add loading of optional ftdb FOFN of features to plot with SeqName, Pos and optional Strand ("."), Color and Shape
 #!# Add file checks and error messages!
+#!# Add scale bar for tick marks.
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="",
                 minregion=50000,align="justify",ygap=4,ypad=0.1,
-                seqorder="",orient="auto",seqsort="auto",
+                seqorder="",orient="auto",seqsort="auto",chromfill="Genome",
                 #pngwidth=1200,pngheight=900,
                 #pointsize=24,pngscale=100,
                 plotdir="./",
@@ -195,26 +197,31 @@ fileTable <- function(filename,delimit=" ",genomes=c()){
 
 ### ~ Load Sequences File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #i# Load delimited file into Sequences table (name, length)
-#i# seqdb = seqTable(filename,delimit="\t")
+#i# seqdb <- seqTable(filename,delimit="\t")
 seqTable <- function(genome,filename,delimit="\t"){
-  regdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
-  regdb$Genome <- genome
-  if("name" %in% colnames(regdb)){
-    regdb <- regdb %>% rename(SeqName=name,SeqLen=length)
+  seqdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
+  seqdb$Genome <- genome
+  if("name" %in% colnames(seqdb)){
+    seqdb <- seqdb %>% rename(SeqName=name,SeqLen=length)
   }
-  if(! "Tel5" %in% colnames(regdb)){
-    regdb$Tel5 <- FALSE
-    regdb$Tel3 <- FALSE
+  if(! "Tel5" %in% colnames(seqdb)){
+    seqdb$Tel5 <- FALSE
+    seqdb$Tel3 <- FALSE
   }
-  regdb$Tel5 <- as.logical(regdb$Tel5)
-  regdb$Tel5[is.na(regdb$Tel5)] <- FALSE
-  regdb$Tel3 <- as.logical(regdb$Tel3)
-  regdb$Tel3[is.na(regdb$Tel3)] <- FALSE
-  regdb <- regdb %>% select(Genome,SeqName,SeqLen,Tel5,Tel3)
-  logWrite(paste('#SEQS',nrow(regdb),genome,"sequences loaded from",filename))
-  regdb <- regdb[regdb$SeqLen >= settings$minlen,]
-  logWrite(paste('#SEQS',nrow(regdb),genome,"sequences meet minlen cutoff of",settings$minlen,"bp"))
-  return(regdb)
+  seqdb$Tel5 <- as.logical(seqdb$Tel5)
+  seqdb$Tel5[is.na(seqdb$Tel5)] <- FALSE
+  seqdb$Tel3 <- as.logical(seqdb$Tel3)
+  seqdb$Tel3[is.na(seqdb$Tel3)] <- FALSE
+  #i# Check for settings$chromfill
+  keepfields <- c("Genome","SeqName","SeqLen","Tel5","Tel3")
+  if(settings$chromfill %in% colnames(seqdb) & ! settings$chromfill %in% keepfields){
+    keepfields <- c(keepfields,settings$chromfill)
+  }
+  seqdb <- seqdb %>% select(all_of(keepfields))
+  logWrite(paste('#SEQS',nrow(seqdb),genome,"sequences loaded from",filename))
+  seqdb <- seqdb[seqdb$SeqLen >= settings$minlen,]
+  logWrite(paste('#SEQS',nrow(seqdb),genome,"sequences meet minlen cutoff of",settings$minlen,"bp"))
+  return(seqdb)
 }
 
 ### ~ Load BUSCO File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -358,10 +365,12 @@ seqRev <- function(seqdb,genome,seqname){
 seqfofn = settings$sequences
 logWrite(paste("Sequence FOFN File:",seqfofn))
 if(! file.exists(seqfofn)){
+  msg <- paste("Cannot find sequence FOFN file:",seqfofn)
   if(settings$rscript){
+    logWrite(msg)
     quit("no",2)  
   }else{
-    stop(paste("Cannot find sequence FOFN file:",seqfofn))
+    stop(msg)
   }
 }
 #i# Region table (does not need BUSCO)
@@ -450,6 +459,13 @@ for(genome in genomes){
   filename <- gendb[genome,"SeqFile"]
   newseqdb <- seqTable(genome,filename)
   if(nrow(seqdb) > 0){
+    #i# Check for inconsistent presence of settings$chromfill field
+    if(settings$chromfill %in% colnames(seqdb) & ! settings$chromfill %in% colnames(newseqdb)){
+      newseqdb[[settings$chromfill]] <- "NA"
+    }
+    if(! settings$chromfill %in% colnames(seqdb) & settings$chromfill %in% colnames(newseqdb)){
+      seqdb[[settings$chromfill]] <- "NA"
+    }
     seqdb <- bind_rows(seqdb,newseqdb)
   }else{
     seqdb <- newseqdb
@@ -497,6 +513,20 @@ logWrite(paste("#TIDK ",nrow(teldb),"TIDK telomere windows loaded in total."))
 busdb <- filter(busdb,SeqName %in% seqdb$SeqName)
 logWrite(paste("#BUSCO ",nrow(busdb),"BUSCO genes for loaded sequences."))
 
+#i# Check for appropriate fill field:
+if(! settings$chromfill %in% colnames(seqdb)){
+  newfill <- "Genome"
+  if("Col" %in% colnames(seqdb)){
+    newfill <- "Col"
+  }
+  logWrite(paste0("Cannot find chromfill field '",settings$chromfill,"' in sequence input tables: setting to chromfill=",newfill))
+  settings$chromfill <- newfill
+}
+if(settings$chromfill == "Col" & "NA" %in% seqdb[[settings$chromfill]]){
+  seqdb[seqdb[[settings$chromfill]] == "NA",][[settings$chromfill]] <- "white"
+}
+
+
 ### ~ Optional sequence filter based on BUSCO data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 if(! settings$orphans){
   fulln <- nrow(seqdb)
@@ -507,69 +537,71 @@ if(! settings$orphans){
 
 
 ##### ======================== Compile data ======================== #####
-#i# Sort for the counter
-busdb <- arrange(busdb,Genome,SeqName,Start,End)
-#i# Join on BuscoID to make homologous regions
-buscopy <- busdb %>% rename(HitGenome=Genome,Hit=SeqName,HitStart=Start,HitEnd=End,HitStrand=Strand)
-regdb <- inner_join(busdb,buscopy)
-#i# Filter and tidy the regdb table
-regdb <- filter(regdb,Genome != HitGenome)
-fwd <- regdb$Strand == regdb$HitStrand
-regdb$Strand <- "-"
-regdb$Strand[fwd] <- "+"
-regdb <- select(regdb,Genome,HitGenome,SeqName,Start,End,Strand,Hit,HitStart,HitEnd,BuscoID) %>%
-  arrange(Genome,HitGenome,SeqName,Start,End)
-
-#?# Should the regdata table be added here? Currently: no. Will be better to have converters to make BUSCO-like tables of 
-#?# regions to link.
-
-#i# Add counter for each Genome (no need to restart numbering)
-regdb$Counter <- 1:nrow(regdb)
-regdb <- arrange(regdb,Genome,HitGenome,Hit,HitStart,HitEnd)
-regdb$HitCounter <- 1:nrow(regdb)
-regdb <- arrange(regdb,Genome,HitGenome,SeqName,Start,End)
-
-#i# - Add synteny block ID
-regdb$Block <- 1
-#i# - compress by block
-progv <- as.integer(1:20 * (nrow(regdb)/20))
-logWrite('Generating synteny blocks...')
-noblock <- settings$maxskip + 2
-for(i in 2:nrow(regdb)){
-  j <- i - 1
-  #i# Updated this to allow a number of moved genes using settings$maxskip
-  #block <- abs(regdb$Counter[i] - regdb$Counter[j]) == 1 & abs(regdb$HitCounter[i] - regdb$HitCounter[j]) == 1
-  block <- abs(regdb$Counter[i] - regdb$Counter[j]) < noblock & abs(regdb$HitCounter[i] - regdb$HitCounter[j]) < noblock
-  if(block){
-    for(field in c("Genome","SeqName","HitGenome","Hit","Strand"))
-      if(regdb[i,field] != regdb[j,field]){
-        block <- FALSE
-      }
+regdb <- data.frame(Genome=c(),HitGenome=c(),SeqName=c(),Start=c(),End=c(),Strand=c(),Hit=c(),HitStart=c(),HitEnd=c(),BuscoID=c(),Length=c(),HitLength=c())
+if(nrow(busdb)){
+  #i# Sort for the counter
+  busdb <- arrange(busdb,Genome,SeqName,Start,End)
+  #i# Join on BuscoID to make homologous regions
+  buscopy <- busdb %>% rename(HitGenome=Genome,Hit=SeqName,HitStart=Start,HitEnd=End,HitStrand=Strand)
+  regdb <- inner_join(busdb,buscopy)
+  #i# Filter and tidy the regdb table
+  regdb <- filter(regdb,Genome != HitGenome)
+  fwd <- regdb$Strand == regdb$HitStrand
+  regdb$Strand <- "-"
+  regdb$Strand[fwd] <- "+"
+  regdb <- select(regdb,Genome,HitGenome,SeqName,Start,End,Strand,Hit,HitStart,HitEnd,BuscoID) %>%
+    arrange(Genome,HitGenome,SeqName,Start,End)
+  
+  #?# Should the regdata table be added here? Currently: no. Will be better to have converters to make BUSCO-like tables of 
+  #?# regions to link.
+  
+  #i# Add counter for each Genome (no need to restart numbering)
+  regdb$Counter <- 1:nrow(regdb)
+  regdb <- arrange(regdb,Genome,HitGenome,Hit,HitStart,HitEnd)
+  regdb$HitCounter <- 1:nrow(regdb)
+  regdb <- arrange(regdb,Genome,HitGenome,SeqName,Start,End)
+  
+  #i# - Add synteny block ID
+  regdb$Block <- 1
+  #i# - compress by block
+  progv <- as.integer(1:20 * (nrow(regdb)/20))
+  logWrite('Generating synteny blocks...')
+  noblock <- settings$maxskip + 2
+  for(i in 2:nrow(regdb)){
+    j <- i - 1
+    #i# Updated this to allow a number of moved genes using settings$maxskip
+    #block <- abs(regdb$Counter[i] - regdb$Counter[j]) == 1 & abs(regdb$HitCounter[i] - regdb$HitCounter[j]) == 1
+    block <- abs(regdb$Counter[i] - regdb$Counter[j]) < noblock & abs(regdb$HitCounter[i] - regdb$HitCounter[j]) < noblock
+    if(block){
+      for(field in c("Genome","SeqName","HitGenome","Hit","Strand"))
+        if(regdb[i,field] != regdb[j,field]){
+          block <- FALSE
+        }
+    }
+    if(block){
+      regdb$Block[i] <- regdb$Block[j]
+    }else{
+      regdb$Block[i] <- regdb$Block[j] + 1
+    }
+    if(i %in% progv){
+      cat(paste0("...",which(progv == i)*5,"%"), file = stderr())
+    }
   }
-  if(block){
-    regdb$Block[i] <- regdb$Block[j]
-  }else{
-    regdb$Block[i] <- regdb$Block[j] + 1
-  }
-  if(i %in% progv){
-    cat(paste0("...",which(progv == i)*5,"%"), file = stderr())
+  cat("\n", file = stderr())
+  logWrite(paste('#BLOCK Generated',max(regdb$Block),"synteny blocks."))
+  #i# - compress by block
+  backdb <- regdb
+  regdb <- backdb %>% group_by(Block) %>% 
+    summarise(Genome=first(Genome),HitGenome=first(HitGenome),SeqName=first(SeqName),Start=min(Start),End=max(End),Strand=first(Strand),Hit=first(Hit),HitStart=min(HitStart),HitEnd=max(HitEnd),BuscoID=n()) %>% 
+    select(-Block) %>%
+    mutate(Length=End-Start+1,HitLength=HitEnd-HitStart+1) %>%
+    filter(Length>=settings$minregion,HitLength>=settings$minregion)
+  logWrite(paste('#BLOCK Reduced to',nrow(regdb),"synteny blocks based on minregion=INT filtering."))
+  if(settings$minbusco > 1){
+    regdb <- filter(regdb,BuscoID>=settings$minbusco)
+    logWrite(paste('#BLOCK Reduced to',nrow(regdb),"synteny blocks based on minbusco=INT filtering."))
   }
 }
-cat("\n", file = stderr())
-logWrite(paste('#BLOCK Generated',max(regdb$Block),"synteny blocks."))
-#i# - compress by block
-backdb <- regdb
-regdb <- backdb %>% group_by(Block) %>% 
-  summarise(Genome=first(Genome),HitGenome=first(HitGenome),SeqName=first(SeqName),Start=min(Start),End=max(End),Strand=first(Strand),Hit=first(Hit),HitStart=min(HitStart),HitEnd=max(HitEnd),BuscoID=n()) %>% 
-  select(-Block) %>%
-  mutate(Length=End-Start+1,HitLength=HitEnd-HitStart+1) %>%
-  filter(Length>=settings$minregion,HitLength>=settings$minregion)
-logWrite(paste('#BLOCK Reduced to',nrow(regdb),"synteny blocks based on minregion=INT filtering."))
-if(settings$minbusco > 1){
-  regdb <- filter(regdb,BuscoID>=settings$minbusco)
-  logWrite(paste('#BLOCK Reduced to',nrow(regdb),"synteny blocks based on minbusco=INT filtering."))
-}
-
 
 ##### ======================== Add pre-generated regdb data ======================== #####
 if(settings$regdata != ""){
@@ -583,11 +615,20 @@ if(settings$regdata != ""){
     regdb <- linkdb
   }
 }
-
+#!# Currently need some linkages. Future versions should be able to plot just chromosomes.
+if(! nrow(regdb) & ! settings$dev){
+  msg <- "No BUSCO links or pre-generated syntenic regions loaded."
+  if(settings$rscript){
+    logWrite(msg)
+    quit("no",2)  
+  }else{
+    stop(msg)
+  }
+}
 
 ##### ======================== Update Gap Colours ======================== #####
 #!# To do:
-# - Gaps within synteny blocks go blue
+# - Gaps within synteny blocks go blue or disappear
 # - Gaps outside synteny blocks stay red
 
 
@@ -742,7 +783,7 @@ if(settings$seqsort == "none"){
   #?# Or might want to have options for sorting by length
   for(genome in settings$order[!settings$order %in% names(seqorder)]){
     seqorder[[genome]] <- seqdb$SeqName[seqdb$Genome == genome]
-    logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
+    #logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
   }
 }
 #i# seqsort=focus will map everything to the focus species
@@ -753,7 +794,7 @@ if(settings$seqsort == "focus"){
   posdb <- arrange(posdb,Order,HitPosMb)
   for(genome in settings$order[!settings$order %in% names(seqorder)]){
     seqorder[[genome]] <- c(posdb[posdb$Genome==genome,]$SeqName, seqdb$SeqName[! seqdb$SeqName %in% posdb$SeqName & seqdb$Genome == genome])
-    logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
+    #logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
   }
 }
 #i# seqsort=auto will use the orientation focus (genfocus)
@@ -775,13 +816,20 @@ if(settings$seqsort == "auto"){
       }
       posdb <- arrange(posdb,Order,HitPosMb)
       seqorder[[genome]] <- c(posdb[posdb$Genome==genome,]$SeqName, seqdb$SeqName[! seqdb$SeqName %in% posdb$SeqName & seqdb$Genome == genome])
-      logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
+      #logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
     }
   }
 }
-#i# seqorder now has the order of the chromosomes for each genome
-
-#?# This is correct but seems to be plotting out of order sometimes.
+#i# seqorder now has the order of the chromosomes for each genome -> check integrity
+for(genome in names(seqorder)){
+  seqnames <- unique(seqdb[seqdb$Genome == genome,]$SeqName)
+  badseq <- seqorder[[genome]][! seqorder[[genome]] %in% seqnames]
+  if(length(badseq)>0){
+    logWrite(paste("Some ordered",genome,"sequences missing. Removed as orphans?:",paste(badseq,collapse=", ")))
+    seqorder[[genome]] <- seqorder[[genome]][seqorder[[genome]] %in% seqnames]
+  }
+  logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
+}
 
 
 ##### ======================== Setup Plots ======================== #####
@@ -792,13 +840,27 @@ if(settings$seqsort == "auto"){
 ### ~ Establish max genome size, gaps and padding ~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 logWrite("Establish max genome size, gaps and padding")
 gendb <- group_by(seqdb,Genome) %>% summarise(Genome=first(Genome),GenLen=sum(SeqLen),SeqNum=n())
+#i# Check for sequences in order
+badord <- settings$order[! settings$order %in% gendb$Genome]
+if(length(badord)>0){
+  logWrite(paste("Problem with ordered genomes lacking sequences:",paste(badord,collapse=",")))
+  settings$order <- settings$order[settings$order %in% gendb$Genome]
+}  
+badgen <- gendb$Genome[! gendb$Genome %in% settings$order]
+if(length(badgen)>0){
+  logWrite(paste("Problem with sequences not matching ordered genomes for",paste(badgen,collapse=",")))
+  gendb <- gendb[gendb$Genome %in% settings$order,]
+}  
+#i# Extablish xgaps
 xgap <- 0.01 * max(gendb$GenLen)
 maxlen <- max(gendb$GenLen + (gendb$SeqNum - 1) * xgap)
+if(settings$debug){ logWrite(paste("Maximum combined chromosome and gap length =",maxlen)) }
 if(settings$align == "justify"){
   gendb$xgap <- (maxlen - gendb$GenLen) / (gendb$SeqNum - 1)
 }else{
   gendb$xgap <- xgap
 }
+if(settings$debug){ logWrite("Adding xshift") }
 gendb$xshift <- 0
 if(settings$align == "right"){
   gendb$xshift <- maxlen - (gendb$GenLen + (gendb$SeqNum - 1) * xgap)
@@ -807,16 +869,25 @@ if(settings$align %in% c("centre","center")){
   gendb$xshift <- maxlen - (gendb$GenLen + (gendb$SeqNum - 1) * xgap) / 2
 }
 gendb$yshift <- 0 - (match(gendb$Genome,settings$order) - 1) * settings$ygap
-rownames(gendb) <- gendb$Genome
+#X# rownames(gendb) <- gendb$Genome
 
 ### ~ Establish xshift and yshift for each sequence ~~~~~~~~~~~~~~~~~~~ ###
+logWrite("Establish xshift and yshift for each sequence")
 seqdb$xshift <- gendb[match(seqdb$Genome,gendb$Genome),]$xshift
 seqdb$yshift <- gendb[match(seqdb$Genome,gendb$Genome),]$yshift
+if(settings$debug){ logWrite("Adding xshift per genome") }
+if(settings$debug){ paste(gendb$Genome) }
 for(genome in settings$order){
-  xshift <- gendb[genome,]$xshift
+  grow <- gendb$Genome == genome
+  xshift <- gendb[grow,]$xshift
+  if(settings$debug){ 
+    logWrite(genome) 
+    logWrite(paste(seqorder[[genome]],collapse=", "))
+    logWrite(paste(unique(seqdb[seqdb$Genome == genome,]$SeqName),collapse=", "))
+  }
   for(seqname in seqorder[[genome]]){
     seqdb[seqdb$Genome==genome & seqdb$SeqName==seqname,]$xshift <- xshift
-    xshift <- xshift + gendb[genome,]$xgap + seqLen(seqdb,genome,seqname)
+    xshift <- xshift + gendb[grow,]$xgap + seqLen(seqdb,genome,seqname)
   }
 }
 
@@ -905,8 +976,14 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   pD$ymod[odd(1:nrow(pD))] <- 1+settings$textshift
   pD$ymod[even(1:nrow(pD))] <- -settings$textshift
   pD$texty <- pD$ymin + pD$ymod
-  plt <- ggplot() +
-    geom_rect(data=pD, mapping=aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, fill=Genome), color="black")
+  plt <- ggplot()
+  #i# Add chromosomes and set colours
+  #geom_rect(data=pD, mapping=aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, fill=Genome), color="black")
+  if(settings$chromfill == "Col"){
+    plt <- plt + geom_rect(data=pD, mapping=aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), fill=pD$Col, color="black")
+  }else{
+    plt <- plt + geom_rect(data=pD, mapping=aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, fill=!!sym(settings$chromfill)), color="black")
+  }
   if(settings$labels){
     plt <- plt +  annotate("text",label=pD$text,x=pD$xmin,y=pD$texty,colour="black",size=3 * settings$labelsize,hjust=0)
   }
@@ -1038,7 +1115,8 @@ if(settings$pdfheight > 0.1){
   pdfheight <- settings$pdfheight
 }
 
-while(is.na(plt) & plotsplits < linknum){
+plotted <- FALSE
+while(! plotted & plotsplits < linknum){
   plotsplits <- (plotsplits + 1)
   #i# Try generating plots until fragmented enough
   tryCatch(
@@ -1083,11 +1161,13 @@ while(is.na(plt) & plotsplits < linknum){
         # dev.off()
         # logWrite(paste0('#PNG Saved output plot to ',settings$plotdir,pngfile))
       }
+      plotted <- TRUE
     },
     error = function(e){
       print(e)
       logWrite(paste("#ERROR",e,"=> splitting plot into",plotsplits+1))
       plt <- NA
+      plotted <- FALSE
     }
   )
   
