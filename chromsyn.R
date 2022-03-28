@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.9.0                             ~~~~~ ###
-### LAST EDIT: 25/03/22                        ~~~~~ ###
+### VERSION: 0.9.1                             ~~~~~ ###
+### LAST EDIT: 28/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ########################################################
@@ -19,7 +19,8 @@
 # v0.7.0 : Add PNG output and optional gap and feature table parsing.
 # v0.8.0 : Added ypad setting to offset the syntenic block plotting a little for clarity. Added fill for open symbols.
 # v0.9.0 : Added chromfill setting to control the colouring of chromosomes by Genome, Type or Col.
-version = "v0.9.0"
+# v0.9.1 : Added ftsize=NUM setting to control the size of telomere and feature points. Fixed rare seqorder bug and R default issues.
+version = "v0.9.1"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -53,6 +54,7 @@ version = "v0.9.0"
 # : pdfwidth=NUM = PDF width [20]
 # : pdfheight=NUM = over-ride for standard calculated PDF height [0]
 # : pdfscale=NUM = over-ride for PDF output scale [1]
+# : ftsize=NUM setting to control the size of telomere and feature points.
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
 # : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
 # : labels=T/F = whether to print chromosome name labels [TRUE]
@@ -97,7 +99,7 @@ defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="
                 #pointsize=24,pngscale=100,
                 plotdir="./",
                 tidkcutoff=50,tidk="tidk.fofn",gaps="gaps.fofn",ft="ft.fofn",
-                minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,
+                minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,ftsize=1,
                 pdfwidth=20,pdfheight=0,pdfscale=1,namesize=1,labelsize=1,labels=TRUE,
                 scale = "Mb",textshift = 0.3,ticks=5e7,rscript=TRUE,
                 basefile="chromsyn",focus="",debug=FALSE,dev=FALSE,
@@ -120,7 +122,7 @@ for(cmd in argvec){
 for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff")){
   settings[[cmd]] = as.integer(settings[[cmd]])
 }
-for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity","ypad")){
+for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity","ypad","ftsize")){
   settings[[cmd]] = as.numeric(settings[[cmd]])
 }
 if(settings$opacity < 0.1){
@@ -184,7 +186,7 @@ if(settings$writexl){
 #i# Load delimited file into FOFN table (genome, file)
 #i# fofndb = fileTable(filename,delimit="\t")
 fileTable <- function(filename,delimit=" ",genomes=c()){
-  regdb <- read.table(filename,fill=TRUE,sep=delimit,header=FALSE,row.names = NULL,quote="\"",comment.char="") %>%
+  regdb <- read.table(filename,fill=TRUE,sep=delimit,header=FALSE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE) %>%
     select(1:2)
   colnames(regdb) <- c("Genome","Filename")
   logWrite(paste('#FOFN',nrow(regdb),"filenames loaded from",filename))
@@ -199,7 +201,7 @@ fileTable <- function(filename,delimit=" ",genomes=c()){
 #i# Load delimited file into Sequences table (name, length)
 #i# seqdb <- seqTable(filename,delimit="\t")
 seqTable <- function(genome,filename,delimit="\t"){
-  seqdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
+  seqdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   seqdb$Genome <- genome
   if("name" %in% colnames(seqdb)){
     seqdb <- seqdb %>% rename(SeqName=name,SeqLen=length)
@@ -233,7 +235,11 @@ v3head = c("BuscoID","Status","Contig","Start","End","Score","Length")
 v5head = c("BuscoID","Status","Contig","Start","End","Strand","Score","Length","OrthoDBURL","Description")
 #i# NOTE: URL and Description not always there.
 buscoTable <- function(genome,filename,seqnames=c()){
-  buscodb = read.table(filename,fill=TRUE,row.names = NULL,sep="\t",quote="")
+  buscodb = read.table(filename,fill=TRUE,row.names = NULL,sep="\t",quote="",stringsAsFactors=FALSE)
+  if(ncol(buscodb) > length(v5head)){
+    logWrite(paste("#BUSCOV Dropping",ncol(buscodb) - length(v5head),"input field(s), not found in v5 format"))
+    buscodb <- buscodb[,1:length(v5head)]
+  }
   if(ncol(buscodb) > length(v3head)){
     logWrite(paste("#BUSCOV BUSCO v5 format"))
     colnames(buscodb) = v5head[1:ncol(buscodb)]
@@ -260,7 +266,7 @@ buscoTable <- function(genome,filename,seqnames=c()){
 #i# Load delimited file into Regions table (Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd)
 #i# regdb = regTable(filename,delimit="\t")
 regTable <- function(filename,delimit="\t"){
-  regdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
+  regdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   if(! "Length" %in% colnames(regdb)){
     regdb <- mutate(regdb,Length=End-Start+1)
   }
@@ -278,7 +284,7 @@ regTable <- function(filename,delimit="\t"){
 #i# Headers: id,window,forward_repeat_number,reverse_repeat_number,telomeric_repeat
 #i# tidkdb = tidkTable(genome,filename,delimit=",")
 tidkTable <- function(genome,filename,delimit=","){
-  tidkdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
+  tidkdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   colnames(tidkdb) <- c("SeqName", "SeqWin", "Tel5", "Tel3", "TelSeq")
   tidkdb$Genome <- genome
   tidkdb <- tidkdb[tidkdb$Tel5 >= settings$tidkcutoff | tidkdb$Tel3 >= settings$tidkcutoff,] 
@@ -306,8 +312,12 @@ ftTable <- function(genome,filename,colour="darkgreen",shape=15){
   if(endsWith(filename,".csv")){
     delimit <- ","
   }
-  ftdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="")
-  ftdb$Genome <- genome
+  ftdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
+  if(nrow(ftdb) > 0){
+    ftdb$Genome <- genome
+  }else{
+    ftdb <- ftdb %>% mutate(Genome = "")
+  }
   for(ftfield in c("SeqName","Pos","Strand","Col","Shape","Start","End")){
     if(tolower(ftfield) %in% colnames(ftdb)){
       ftdb[[ftfield]] <- ftdb[[tolower(ftfield)]]
@@ -416,8 +426,8 @@ seqfiles <- fileTable(settings$sequences) %>% rename(SeqFile=Filename)
 buscofiles <- fileTable(settings$busco,genomes=seqfiles$Genome) %>% rename(BUSCO=Filename)
 if(length(settings$order)<1 | (length(settings$order)==1 & settings$order[1] == "")){
   settings$order <- seqfiles$Genome
+  logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
 }
-logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
 #i# Combine into table
 gendb <- inner_join(seqfiles,buscofiles)
 # - TIDK
@@ -443,10 +453,14 @@ if(file.exists(settings$ft)){
 }
 
 #i# Update sequence order
-settings$order[settings$order %in% gendb$Genome]
+settings$order <- settings$order[settings$order %in% gendb$Genome]
 gendb <- gendb %>% filter(Genome %in% settings$order)
 rownames(gendb) <- gendb$Genome
 logWrite(paste("#GENOME ",nrow(gendb),"genomes:",paste(settings$order,collapse=", ")))
+if(settings$debug){ 
+  logWrite(paste("#GENDB ",nrow(gendb),"genomes:",paste(gendb$Genome,collapse=", "))) 
+  print(gendb)
+}
 genomes <- settings$order
 #i# Load actual sequence and busco data
 seqdb <- data.frame()
@@ -455,8 +469,10 @@ teldb <- data.frame()
 gapdb <- data.frame()
 ftdb <- data.frame()
 for(genome in genomes){
+  logWrite(paste0(genome,"..."))
   #i# Sequences
-  filename <- gendb[genome,"SeqFile"]
+  filename <- gendb[gendb$Genome == genome,]$SeqFile[1]
+  if(settings$debug){ logWrite(paste0(filename,": ",file.exists(filename))) }
   newseqdb <- seqTable(genome,filename)
   if(nrow(seqdb) > 0){
     #i# Check for inconsistent presence of settings$chromfill field
@@ -491,7 +507,9 @@ for(genome in genomes){
   if(! is.na(filename)){
     newdb <- ftTable(genome,filename,colour="darkred",shape=3)
     if(nrow(gapdb) > 0){
-      gapdb <- bind_rows(gapdb,newdb)
+      if(nrow(newdb)){
+        gapdb <- bind_rows(gapdb,newdb)
+      }
     }else{
       gapdb <- newdb
     }
@@ -501,7 +519,9 @@ for(genome in genomes){
   if(! is.na(filename)){
     newdb <- ftTable(genome,filename)
     if(nrow(ftdb) > 0){
-      ftdb <- bind_rows(ftdb,newdb)
+      if(nrow(newdb)){
+        ftdb <- bind_rows(ftdb,newdb)
+      }
     }else{
       ftdb <- newdb
     }
@@ -828,6 +848,11 @@ for(genome in names(seqorder)){
     logWrite(paste("Some ordered",genome,"sequences missing. Removed as orphans?:",paste(badseq,collapse=", ")))
     seqorder[[genome]] <- seqorder[[genome]][seqorder[[genome]] %in% seqnames]
   }
+  misseq <- seqnames[! seqnames %in% seqorder[[genome]]]
+  if(length(misseq)>0){
+    logWrite(paste("Missing",genome,"sequences added to order list:",paste(misseq,collapse=", ")))
+    seqorder[[genome]] <- c(seqorder[[genome]],misseq)
+  }
   logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
 }
 
@@ -853,10 +878,13 @@ if(length(badgen)>0){
 }  
 #i# Extablish xgaps
 xgap <- 0.01 * max(gendb$GenLen)
-maxlen <- max(gendb$GenLen + (gendb$SeqNum - 1) * xgap)
+maxlen <- max(gendb$GenLen + ((gendb$SeqNum - 1) * xgap))
 if(settings$debug){ logWrite(paste("Maximum combined chromosome and gap length =",maxlen)) }
 if(settings$align == "justify"){
   gendb$xgap <- (maxlen - gendb$GenLen) / (gendb$SeqNum - 1)
+  if(settings$debug){ 
+    print(summary( gendb$GenLen + ((gendb$SeqNum - 1) * gendb$xgap)  ))  
+  }
 }else{
   gendb$xgap <- xgap
 }
@@ -907,11 +935,15 @@ if(nrow(teldb)){
   teldb$yshift <- teldb$yshift + 0.25
   teldb[teldb$Strand == '-',]$yshift <- teldb[teldb$Strand == '-',]$yshift + 0.5
 }
+teldb <- mutate(teldb,Size=settings$ftsize)
+seqdb <- mutate(seqdb,Size=settings$ftsize)
 
 ### ~ Gaps and Features ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 logWrite("Gaps and Features...")
 #i# Combine with seqdb to get xshift and yshift
 #i# Update ftdb to have the correct xshift and yshift information, reversing where needed
+gapdb <- mutate(gapdb,Size=1)
+ftdb <- mutate(ftdb,Size=settings$ftsize)
 if(nrow(ftdb)){
   ftdb <- right_join(ftdb,seqdb)
   if(nrow(gapdb)){
@@ -1011,23 +1043,23 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   #?# Could have a feature type field and map colour by type?
   if(nrow(ftdb)){
     pD <- ftdb %>% mutate(xpos=(xshift+Pos)/rescale)
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,fill=pD$Fill,shape=pD$Shape)
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,fill=pD$Fill,shape=pD$Shape,size=pD$Size)
   }
   # Telomeres
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
   pD <- pD[ (pD$Tel5 & ! pD$Rev) | (pD$Tel3 & pD$Rev), ]
   if(nrow(pD)){
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y),colour="black")
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y),colour="black",size=pD$Size)
   }
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
   pD <- pD[ (pD$Tel5 & pD$Rev) | (pD$Tel3 & ! pD$Rev), ]
   if(nrow(pD)){
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y),colour="black")
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y),colour="black",size=pD$Size)
   }
   # TIDK internal windows
   if(nrow(teldb)){
     pD <- teldb %>% mutate(xpos=(xshift+Pos)/rescale)
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour="blue")
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour="blue",size=pD$Size)
   }
 
   cat("Generating plot", file = stderr())

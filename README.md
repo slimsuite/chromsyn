@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.9.0`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.9.1`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -117,6 +117,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : pdfwidth=NUM = PDF width [20]
 # : pdfheight=NUM = over-ride for standard calculated PDF height [0]
 # : pdfscale=NUM = over-ride for PDF output scale [1]
+# : ftsize=NUM setting to control the size of telomere and feature points.
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
 # : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
 # : labels=T/F = whether to print chromosome name labels [TRUE]
