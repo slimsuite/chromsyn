@@ -1,6 +1,6 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.9.2                             ~~~~~ ###
+### VERSION: 0.9.3                             ~~~~~ ###
 ### LAST EDIT: 29/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
@@ -21,7 +21,8 @@
 # v0.9.0 : Added chromfill setting to control the colouring of chromosomes by Genome, Type or Col.
 # v0.9.1 : Added ftsize=NUM setting to control the size of telomere and feature points. Fixed rare seqorder bug and R default issues.
 # v0.9.2 : Added scale=pc option to rescale all assemblies to be proportions of total length. Increased default ftsize.
-version = "v0.9.2"
+# v0.9.3 : Fixed feature-plotting bug when chromosome fill set.
+version = "v0.9.3"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -538,6 +539,9 @@ for(genome in genomes){
 logWrite(paste("#SEQS ",nrow(seqdb),"sequences loaded in total."))
 logWrite(paste("#BUSCO ",nrow(busdb),"BUSCO genes loaded in total."))
 logWrite(paste("#TIDK ",nrow(teldb),"TIDK telomere windows loaded in total."))
+logWrite(paste("#FT ",nrow(ftdb),"features loaded in total."))
+logWrite(paste("#GAPS ",nrow(gapdb),"assembly gaps loaded in total."))
+#i# Filter BUSCO to loaded sequences
 busdb <- filter(busdb,SeqName %in% seqdb$SeqName)
 logWrite(paste("#BUSCO ",nrow(busdb),"BUSCO genes for loaded sequences."))
 
@@ -863,6 +867,14 @@ for(genome in names(seqorder)){
   }
   logWrite(paste('#ORDER',genome,'sequences:',paste(seqorder[[genome]],collapse=", ")))
 }
+#i# Debug check
+if(settings$debug){
+  logWrite(paste("#SEQS",nrow(seqdb),"sequences in total."))
+  logWrite(paste("#BUSCO",nrow(busdb),"BUSCO genes in total."))
+  logWrite(paste("#TIDK",nrow(teldb),"TIDK telomere windows in total."))
+  logWrite(paste("#FT",nrow(ftdb),"features in total."))
+  logWrite(paste("#GAPS",nrow(gapdb),"assembly gaps in total."))
+}
 
 
 ##### ======================== Setup Plots ======================== #####
@@ -870,7 +882,7 @@ for(genome in names(seqorder)){
 #i# seqorder[[genome]] sets the horizontal order for each genome
 #i# regdb sets the linkages
 
-### ~ Establish max genome size, gaps and padding ~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+### ~ Establish max genome size ~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 logWrite("Establish max genome size, gaps and padding")
 gendb <- group_by(seqdb,Genome) %>% summarise(Genome=first(Genome),GenLen=sum(SeqLen),SeqNum=n())
 #i# Check for sequences in order
@@ -884,6 +896,8 @@ if(length(badgen)>0){
   logWrite(paste("Problem with sequences not matching ordered genomes for",paste(badgen,collapse=",")))
   gendb <- gendb[gendb$Genome %in% settings$order,]
 }
+
+### ~ Rescaling ~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #i# Rescaling if scale=pc - needs to change all positions and chromosome sizes
 pcScale <- function(gendb,dbtable,dbtxt){
   if(! nrow(dbtable)){ return(dbtable) }
@@ -928,6 +942,8 @@ if(settings$scale == "pc"){
     logWrite('#TICKS Rescaled tick marks to 1%. Set ticks < 100 to avoid rescaling.')
   }
 }
+
+### ~ Establish gaps and padding ~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #i# Extablish xgaps
 xgap <- 0.01 * max(gendb$GenLen)
 maxlen <- max(gendb$GenLen + ((gendb$SeqNum - 1) * xgap))
@@ -1001,14 +1017,14 @@ logWrite("Gaps and Features...")
 gapdb <- mutate(gapdb,Size=1)
 ftdb <- mutate(ftdb,Size=settings$ftsize)
 if(nrow(ftdb)){
-  ftdb <- right_join(ftdb,seqdb)
+  ftdb <- left_join(ftdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift))
   if(nrow(gapdb)){
-    ftdb <- bind_rows(ftdb,right_join(gapdb,seqdb))
+    ftdb <- bind_rows(ftdb,left_join(gapdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift)))
   }
   ftdb <- ftdb[! is.na(ftdb$Pos),]
 }else{
   if(nrow(gapdb)){
-    ftdb <- right_join(gapdb,seqdb)
+    ftdb <- left_join(gapdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift))
   }
   ftdb <- ftdb[! is.na(ftdb$Pos),]
 }
@@ -1029,6 +1045,16 @@ if(nrow(ftdb)){
   ftdb[ftdb$Strand == '-',]$yshift <- ftdb[ftdb$Strand == '-',]$yshift - 0.4
   ftdb[ftdb$Strand == '+',]$yshift <- ftdb[ftdb$Strand == '+',]$yshift + 0.4
 }
+#i# Debug check
+if(settings$debug){
+  logWrite(paste("#SEQS",nrow(seqdb),"sequences in total."))
+  logWrite(paste("#BUSCO",nrow(busdb),"BUSCO genes in total."))
+  logWrite(paste("#TIDK",nrow(teldb),"TIDK telomere windows in total."))
+  logWrite(paste("#FT",nrow(ftdb),"features+gaps in total."))
+  logWrite(paste("#GAPS",nrow(gapdb),"assembly gaps in total."))
+}
+
+
 
 
 ##### ======================== Save data to Excel ======================== #####
@@ -1103,6 +1129,7 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
   # Features
   #?# Could have a feature type field and map colour by type?
+  if(settings$debug){ logWrite(paste(nrow(ftdb),"features & gaps to plot")) }
   if(nrow(ftdb)){
     pD <- ftdb %>% mutate(xpos=(xshift+Pos)/rescale)
     plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,fill=pD$Fill,shape=pD$Shape,size=pD$Size)
@@ -1110,15 +1137,18 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   # Telomeres
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
   pD <- pD[ (pD$Tel5 & ! pD$Rev) | (pD$Tel3 & pD$Rev), ]
+  if(settings$debug){ logWrite(paste(nrow(pD),"5' telomeres to plot")) }
   if(nrow(pD)){
     plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y),colour="black",size=pD$Size)
   }
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
   pD <- pD[ (pD$Tel5 & pD$Rev) | (pD$Tel3 & ! pD$Rev), ]
+  if(settings$debug){ logWrite(paste(nrow(pD),"3' telomeres to plot")) }
   if(nrow(pD)){
     plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y),colour="black",size=pD$Size)
   }
   # TIDK internal windows
+  if(settings$debug){ logWrite(paste(nrow(teldb),"3' TIDK telomeres to plot")) }
   if(nrow(teldb)){
     pD <- teldb %>% mutate(xpos=(xshift+Pos)/rescale)
     plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour="blue",size=pD$Size)
