@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.9.1`. (Check the chromsyn.R file to be sure!)
+The current version should be `v0.9.2`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -79,15 +79,15 @@ Rscript $PATH/chromsyn.R basefile=$OUTPUTPREFIX | tee $OUTPREFIX.runlog
 
 The main output is one or more [chromosome synteny plots](https://github.com/slimsuite/chromsyn/blob/main/zoomarsupials.pdf) and (if `writexl` is installed) an Excel file containing the established synteny. 
 
-![Example plot of DNA Zoo marsupials](https://github.com/slimsuite/chromsyn/blob/main/zoomarsupials.png)
+![Example plot of DNA Zoo marsupials. Each row is a different genome assembly. Each rectangle is an assembly scaffold. Reversed scaffolds have an R suffix. Default units are Mb, with tick marks every 10 Mb. Black and blue dots indicate Diploidocus and 3' TIDK telomere predictions. Other symbols mark annotated features, which are rRNA gene predictions in this example. Vertical placement indicates strand.](https://github.com/slimsuite/chromsyn/blob/main/zoomarsupials.png)
 
 **NOTE:** ChromSyn will try to generate a single synteny plot. However, where there are many synteny blocks and rearrangements, system resources for R are sometimes exceeded. In this case, multiple plots will be produced that each contain a subset of the pairwise synteny comparisons. These can then be manually combined into a single figure.
 
-**NOTE:** Example figure needs to be updated with telomeres plotted.
+**NOTE:** if provided, assembly gaps will be plotted as dark red plus signs.
 
 ## Options
 
-A more detailed descriptions of options and use cases will be added in time. The following options can be provided in the form `argument=value` to alter inputs and/or outputs:
+A more detailed description of options and use cases will be added in time. The following options can be provided in the form `argument=value` to alter inputs and/or outputs:
 
 ```
 # : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
@@ -111,7 +111,7 @@ A more detailed descriptions of options and use cases will be added in time. The
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
 # : ypad=NUM = proportion of ygap to extend synteny blocks before linking [0.1]
-# : scale=X = units in basepairs for setting the x-axis scale [Mb]
+# : scale=X = units in basepairs for setting the x-axis scale (bp/kb/Mb/Gb/pc) [Mb]
 # : textshift=NUM = offset for printing chromosome names [0.3]
 # : ticks=INT = distance between tickmarks [5e7]
 # : pdfwidth=NUM = PDF width [20]

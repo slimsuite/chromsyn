@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.9.1                             ~~~~~ ###
-### LAST EDIT: 28/03/22                        ~~~~~ ###
+### VERSION: 0.9.2                             ~~~~~ ###
+### LAST EDIT: 29/03/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ########################################################
@@ -20,7 +20,8 @@
 # v0.8.0 : Added ypad setting to offset the syntenic block plotting a little for clarity. Added fill for open symbols.
 # v0.9.0 : Added chromfill setting to control the colouring of chromosomes by Genome, Type or Col.
 # v0.9.1 : Added ftsize=NUM setting to control the size of telomere and feature points. Fixed rare seqorder bug and R default issues.
-version = "v0.9.1"
+# v0.9.2 : Added scale=pc option to rescale all assemblies to be proportions of total length. Increased default ftsize.
+version = "v0.9.2"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -48,7 +49,7 @@ version = "v0.9.1"
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
 # : ypad=NUM = proportion of ygap to extend synteny blocks before linking [0.1]
-# : scale=X = units in basepairs for setting the x-axis scale [Mb]
+# : scale=X = units in basepairs for setting the x-axis scale (bp/kb/Mb/Gb/pc) [Mb]
 # : textshift=NUM = offset for printing chromosome names [0.3]
 # : ticks=INT = distance between tickmarks [5e7]
 # : pdfwidth=NUM = PDF width [20]
@@ -89,6 +90,7 @@ version = "v0.9.1"
 # : pointsize=NUM = PNG text point size [24]
 #!# Add file checks and error messages!
 #!# Add scale bar for tick marks.
+#!# Add an option to rescale all chromosomes to a proprtion of total, rather than actual size.
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -119,18 +121,23 @@ for(cmd in argvec){
     settings[[cmdv[1]]] = TRUE    
   }
 }
+#i# integer parameters
 for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff")){
   settings[[cmd]] = as.integer(settings[[cmd]])
 }
+#i# other numeric parameter
 for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity","ypad","ftsize")){
   settings[[cmd]] = as.numeric(settings[[cmd]])
 }
+#i# adjust parameters where needed
+settings$ftsize <- settings$ftsize * 2
 if(settings$opacity < 0.1){
   settings$opacity <- 0.1
 }
 if(settings$opacity > 1){
   settings$opacity <- 1
 }
+#i# list parameters
 for(cmd in c("order","seqorder")){
   if(length(settings[[cmd]]) > 0){
     settings[[cmd]] = strsplit(settings[[cmd]],',',TRUE)[[1]]
@@ -138,12 +145,13 @@ for(cmd in c("order","seqorder")){
     settings[[cmd]] <- defaults[[cmd]]
   }
 }
+#i# logical parameters
 for(cmd in c("debug","dev","orphans","labels")){
   settings[[cmd]] = as.logical(settings[[cmd]])
 }
 
+#i# Set warnings based on debug
 oldwarn <- getOption("warn")
-
 if(settings$debug){
   writeLines(argvec)
 }else{
@@ -875,7 +883,51 @@ badgen <- gendb$Genome[! gendb$Genome %in% settings$order]
 if(length(badgen)>0){
   logWrite(paste("Problem with sequences not matching ordered genomes for",paste(badgen,collapse=",")))
   gendb <- gendb[gendb$Genome %in% settings$order,]
-}  
+}
+#i# Rescaling if scale=pc - needs to change all positions and chromosome sizes
+pcScale <- function(gendb,dbtable,dbtxt){
+  if(! nrow(dbtable)){ return(dbtable) }
+  pcdb <- left_join(dbtable,gendb %>% select(Genome,GenLen))
+  fields <- c()
+  for(field in c("Pos","Start","End","RevPos","SeqLen")){
+    if(field %in% colnames(pcdb)){
+      pcdb[[field]] <- 100 * pcdb[[field]] / pcdb$GenLen
+      fields <- c(fields,field)
+    }
+  }
+  logWrite(paste0("#SCALE Rescaled ",dbtxt," fields to scale=pc: ", paste(fields,collapse=", ")))
+  return(pcdb)
+}
+
+if(settings$scale == "pc"){
+  # Rescale seqdb, busdb, ftdb, gapdb, regdb, teldb
+  seqdb <- pcScale(gendb,seqdb,"Sequences")
+  busdb <- pcScale(gendb,busdb,"BUSCO")
+  ftdb <- pcScale(gendb,ftdb,"Features")
+  gapdb <- pcScale(gendb,gapdb,"Gaps")
+  regdb <- pcScale(gendb,regdb,"Synteny")
+  teldb <- pcScale(gendb,teldb,"Telomeres")
+  # Rescale hits in regdb
+  pcdb <- left_join(regdb,gendb %>% select(Genome,GenLen) %>% rename(HitGenome=Genome,HitGenLen=GenLen))
+  fields <- c()
+  for(field in c("HitStart","HitEnd","HitLength")){
+    if(field %in% colnames(pcdb)){
+      pcdb[[field]] <- 100 * pcdb[[field]] / pcdb$HitGenLen
+      fields <- c(fields,field)
+    }
+  }
+  logWrite(paste0("#SCALE Rescaled Syntenty hit fields to scale=pc: ", paste(fields,collapse=", ")))
+  regdb <- pcdb
+  # No need to rescale HitPosMb within bestdb: not used again.
+  # Rescale gendb
+  gendb <- gendb %>% rename(RawGenLen=GenLen)
+  gendb$GenLen <- 100
+  # Rescale ticks
+  if(settings$ticks > 100){
+    settings$ticks <- 1
+    logWrite('#TICKS Rescaled tick marks to 1%. Set ticks < 100 to avoid rescaling.')
+  }
+}
 #i# Extablish xgaps
 xgap <- 0.01 * max(gendb$GenLen)
 maxlen <- max(gendb$GenLen + ((gendb$SeqNum - 1) * xgap))
@@ -926,7 +978,11 @@ logWrite("TIDK Telomeres...")
 teldb <- right_join(teldb,seqdb)
 teldb <- teldb[! is.na(teldb$Pos),]
 if(nrow(teldb)){
-  teldb$RevPos <- teldb$SeqLen - teldb$Pos + 1
+  if(settings$scale == "pc"){
+    teldb$RevPos <- teldb$SeqLen - teldb$Pos + (1 / teldb$GenLen)
+  }else{
+    teldb$RevPos <- teldb$SeqLen - teldb$Pos + 1
+  }
   teldb$RevStrand <- '+'
   teldb[teldb$Strand == '+',]$RevStrand <- '-'
   #i# Reverse the strand and position where needed for plotting
@@ -958,7 +1014,11 @@ if(nrow(ftdb)){
 }
 #i# Reverse the features where required
 if(nrow(ftdb)){
-  ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + 1
+  if(settings$scale == "pc"){
+    ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + (1 / ftdb$GenLen)
+  }else{
+    ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + 1
+  }
   ftdb$RevStrand <- '.'
   ftdb[ftdb$Strand == '+',]$RevStrand <- '-'
   ftdb[ftdb$Strand == '-',]$RevStrand <- '+'
@@ -999,8 +1059,10 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   if(length(linkages)<1){
     linkages <- 1:(length(settings$order)-1)
   }
-  scaling <- list(bp=1, kb=1e3, Mb=1e6, Gb=1e9)
+  scaling <- list(bp=1, kb=1e3, Mb=1e6, Gb=1e9, pc=1)
   rescale <- scaling[[settings$scale]]
+  revshift <- 1
+  if(settings$scale == "pc"){ revshift <- 0 }
   
   #i# First, plot the chromosomes
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,ymin=yshift,ymax=yshift+1) %>% 
@@ -1085,14 +1147,14 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
       # Check for reversals
       fwd <- plotdb$Strand[i] == "+"
       if(seqRev(seqdb,plotdb$Genome[i],plotdb$SeqName[i])){
-        tmp <- seqLen(seqdb,plotdb$Genome[i],plotdb$SeqName[i]) - xa1 + 1
-        xa1 <- seqLen(seqdb,plotdb$Genome[i],plotdb$SeqName[i]) - xa2 + 1
+        tmp <- seqLen(seqdb,plotdb$Genome[i],plotdb$SeqName[i]) - xa1 + revshift
+        xa1 <- seqLen(seqdb,plotdb$Genome[i],plotdb$SeqName[i]) - xa2 + revshift
         xa2 <- tmp
         fwd <- ! fwd
       }
       if(seqRev(seqdb,plotdb$HitGenome[i],plotdb$Hit[i])){
-        tmp <- seqLen(seqdb,plotdb$HitGenome[i],plotdb$Hit[i]) - xb1 + 1
-        xb1 <- seqLen(seqdb,plotdb$HitGenome[i],plotdb$Hit[i]) - xb2 + 1
+        tmp <- seqLen(seqdb,plotdb$HitGenome[i],plotdb$Hit[i]) - xb1 + revshift
+        xb1 <- seqLen(seqdb,plotdb$HitGenome[i],plotdb$Hit[i]) - xb2 + revshift
         xb2 <- tmp
         fwd <- ! fwd
       }
