@@ -4,11 +4,13 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v0.9.3`. (Check the chromsyn.R file to be sure!)
+The current version should be `v1.0.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
-For now, please cite this GitHub repo. Better citation information will follow!
+If you use ChromSyn in your work, please cite the bioRxiv paper describing the Myrtle Rust genome: 
+
+* Edwards RJ, Dong C, Park RF & Tobias PA Tobias. "A phased chromosome-level genome and full mitochondrial sequence for the dikaryotic myrtle rust pathogen, _Austropuccinia psidii_". bioRxiv 2022.04.22.489119 doi: [10.1101/2022.04.22.489119](https://doi.org/10.1101/2022.04.22.489119)
 
 ## Dependencies
 
@@ -137,8 +139,15 @@ source("chromsyn.R")
 
 ## Algorithm overview
 
-_To be added._
+Chromosome synteny analysis is performed using single-copy “Complete” genes from BUSCO genome completeness runs. Synteny blocks between pairs of assembly are determined as collinear runs of matching BUSCO gene identifications. For each assembly pair, BUSCO genes rated as “Complete” in both genomes are ordered and oriented along each chromosome. Synteny blocks are then established as sets of BUSCO genes that are collinear and uninterrupted (i.e. sharing the same order and strand) in both genomes. A synteny block starts at the start of a BUSCO gene and will keep extending all the time the same BUSCO gene is found next in the same direction in both assemblies. It will end at the end of the last BUSCO gene in the block. (Local rearrangements and breakdowns of synteny between BUSCO genes will not be identified and may be falsely marked as syntenic within a synteny block.) 
+
+Settings to control this behaviour include:
+
+*	The min no. of genes needed to define a block. (1 by default)
+*	The min length for a synteny block (50kb by default).
+*	The max number of BUSCO genes that can be skipped to maintain synteny. (0 by default)
 
 
+Chromosome synteny is then visualised by arranging the chromosomes for each assembly in rows and plotting the synteny blocks between adjacent assemblies. In each case, the chromosome order and orientation is set for one “focus” assembly, and the remaining assemblies arranged in order to maximise the clarity of the synteny plot, propagating out from the focal genome. For each chromosome, the “best hit” in each other assembly is established as that with the maximum total length of shared synteny blocks and an anchor point established as the mean position along the best hit chromosome of those synteny blocks. Where the majority of synteny is on the opposite strand, the chromosome is reversed and given an “R” suffix in the plot. Chromosomes are then ordered according to their best hits and, within best hits, the anchor points. Synteny blocks sharing the same orientation are plotted blue, whilst inversions are plotted in red.
 
-
+ 

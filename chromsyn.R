@@ -1,9 +1,11 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 0.9.3                             ~~~~~ ###
-### LAST EDIT: 29/03/22                        ~~~~~ ###
+### VERSION: 1.0.0                             ~~~~~ ###
+### LAST EDIT: 22/04/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
+### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
+###       doi: 10.1101/2022.04.22.489119       ~~~~~ ###
 ########################################################
 
 # This script is for homology-based chromosome synteny plots
@@ -22,7 +24,10 @@
 # v0.9.1 : Added ftsize=NUM setting to control the size of telomere and feature points. Fixed rare seqorder bug and R default issues.
 # v0.9.2 : Added scale=pc option to rescale all assemblies to be proportions of total length. Increased default ftsize.
 # v0.9.3 : Fixed feature-plotting bug when chromosome fill set.
-version = "v0.9.3"
+# v0.9.4 : Fixed regdata bugs. Moved orphan reduction to follow regdata incorporation.
+# v0.9.5 : Changed default feature plot to a black square with white fill. Enabled missing subsets of files.
+# v1.0.0 : Changed default plotting to remove legend. First release, corresponding to Myrtle Rust bioRxiv paper.
+version = "v1.0.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -32,7 +37,7 @@ version = "v0.9.3"
 # : tidk=FOFN = Optional file of PREFIX FILE with TIDK search results. [tidk.fofn]
 # : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
 # : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
-# : regdata=TSV = File of Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd
+# : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
 # : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
@@ -59,7 +64,7 @@ version = "v0.9.3"
 # : ftsize=NUM setting to control the size of telomere and feature points.
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
 # : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
-# : labels=T/F = whether to print chromosome name labels [TRUE]
+# : labels=T/F = whether to print chromosome name labels (True) or legend (False) [TRUE]
 # : opacity=NUM = Opacity of synteny regions (0-1) [0.3]
 # : debug=T/F = whether to switch on additional debugging outputs [FALSE]
 # : dev=T/F = whether to switch on dev mode during code updates [FALSE]
@@ -92,6 +97,9 @@ version = "v0.9.3"
 #!# Add file checks and error messages!
 #!# Add scale bar for tick marks.
 #!# Add an option to rescale all chromosomes to a proprtion of total, rather than actual size.
+#!# Add compilation of regdata synteny blocks like BUSCO blocks. Add a second regdata minlen cutoff (regfilter=X).
+#!# Add an option to incorporate Duplicated BUSCO genes into features table. (Yellow arrows)
+#!# Add the features table inc gaps and telomeres to the Excel output.
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -210,6 +218,7 @@ fileTable <- function(filename,delimit=" ",genomes=c()){
 #i# Load delimited file into Sequences table (name, length)
 #i# seqdb <- seqTable(filename,delimit="\t")
 seqTable <- function(genome,filename,delimit="\t"){
+  if(! file.exists(filename)){ return(data.frame()) }
   seqdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   seqdb$Genome <- genome
   if("name" %in% colnames(seqdb)){
@@ -244,6 +253,7 @@ v3head = c("BuscoID","Status","Contig","Start","End","Score","Length")
 v5head = c("BuscoID","Status","Contig","Start","End","Strand","Score","Length","OrthoDBURL","Description")
 #i# NOTE: URL and Description not always there.
 buscoTable <- function(genome,filename,seqnames=c()){
+  if(! file.exists(filename)){ return(data.frame()) }
   buscodb = read.table(filename,fill=TRUE,row.names = NULL,sep="\t",quote="",stringsAsFactors=FALSE)
   if(ncol(buscodb) > length(v5head)){
     logWrite(paste("#BUSCOV Dropping",ncol(buscodb) - length(v5head),"input field(s), not found in v5 format"))
@@ -259,9 +269,13 @@ buscoTable <- function(genome,filename,seqnames=c()){
   buscodb$Contig = as.character(buscodb$Contig)
   buscodb <- buscodb[buscodb$Status == "Complete",]
   logWrite(paste('#BUSCO',nrow(buscodb),genome,"Complete BUSCO genes loaded from",filename))
-  buscodb$Genome <- genome
-  buscodb$Start <- as.integer(buscodb$Start)
-  buscodb$End <- as.integer(buscodb$End)
+  if(nrow(buscodb) > 0){
+    buscodb$Genome <- genome
+    buscodb$Start <- as.integer(buscodb$Start)
+    buscodb$End <- as.integer(buscodb$End)
+  }else{
+    buscodb <- buscodb %>% mutate(Genome="")
+  }
   buscodb <- buscodb %>% rename(SeqName=Contig) %>% select(Genome,SeqName,Start,End,Strand,BuscoID)
   #i# Filter to sequences if given
   if(length(seqnames) > 0){
@@ -272,9 +286,10 @@ buscoTable <- function(genome,filename,seqnames=c()){
 }
 
 ### ~ Load Regions File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
-#i# Load delimited file into Regions table (Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd)
+#i# Load delimited file into Regions table (Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd)
 #i# regdb = regTable(filename,delimit="\t")
 regTable <- function(filename,delimit="\t"){
+  if(! file.exists(filename)){ return(data.frame()) }
   regdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   if(! "Length" %in% colnames(regdb)){
     regdb <- mutate(regdb,Length=End-Start+1)
@@ -282,17 +297,18 @@ regTable <- function(filename,delimit="\t"){
   if(! "HitLength" %in% colnames(regdb)){
     regdb <- mutate(regdb,HitLength=HitEnd-HitStart+1)
   }
-  regdb <- select(regdb,Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd, Length, HitLength)
+  regdb <- select(regdb,Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd, Length, HitLength)
   #?# Check the fields
   logWrite(paste('#REGION',nrow(regdb),"linked regions loaded from",filename))
   return(regdb)
 }
 
 ### ~ Load TIDK File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
-#i# Load delimited file into TIDK table (Genome, Seqname, SeqWin, Tel5, Tel3, TelSeq)
+#i# Load delimited file into TIDK table (Genome, SeqName, SeqWin, Tel5, Tel3, TelSeq)
 #i# Headers: id,window,forward_repeat_number,reverse_repeat_number,telomeric_repeat
 #i# tidkdb = tidkTable(genome,filename,delimit=",")
 tidkTable <- function(genome,filename,delimit=","){
+  if(! file.exists(filename)){ return(data.frame()) }
   tidkdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   colnames(tidkdb) <- c("SeqName", "SeqWin", "Tel5", "Tel3", "TelSeq")
   tidkdb$Genome <- genome
@@ -316,7 +332,8 @@ tidkTable <- function(genome,filename,delimit=","){
 ### ~ Load Feature/Gap File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #i# Load delimited file into feature or gaps (Genome, Seqname, Pos, Strand, Col, Shape)
 #i# ftdb = ftTable(genome,filename,delimit=",")
-ftTable <- function(genome,filename,colour="darkgreen",shape=15){
+ftTable <- function(genome,filename,colour="white",shape=22){
+  if(! file.exists(filename)){ return(data.frame()) }
   delimit <- "\t"
   if(endsWith(filename,".csv")){
     delimit <- ","
@@ -442,21 +459,21 @@ gendb <- inner_join(seqfiles,buscofiles)
 # - TIDK
 if(file.exists(settings$tidk)){
   tidkfiles <- fileTable(settings$tidk,genomes=seqfiles$Genome) %>% rename(TIDK=Filename)
-  gendb <- inner_join(gendb,tidkfiles)
+  gendb <- left_join(gendb,tidkfiles)
 }else{
   gendb$TIDK <- NA
 }
 # - gaps
 if(file.exists(settings$gaps)){
   gapfiles <- fileTable(settings$gaps,genomes=seqfiles$Genome) %>% rename(gaps=Filename)
-  gendb <- inner_join(gendb,gapfiles)
+  gendb <- left_join(gendb,gapfiles)
 }else{
   gendb$gaps <- NA
 }
 # - features
 if(file.exists(settings$ft)){
   ftfiles <- fileTable(settings$ft,genomes=seqfiles$Genome) %>% rename(features=Filename)
-  gendb <- inner_join(gendb,ftfiles)
+  gendb <- left_join(gendb,ftfiles)
 }else{
   gendb$features <- NA
 }
@@ -498,7 +515,10 @@ for(genome in genomes){
   #i# BUSCO
   filename <- gendb[genome,"BUSCO"]
   if(nrow(busdb) > 0){
-    busdb <- bind_rows(busdb,buscoTable(genome,filename,newseqdb$SeqName))
+    newbusdb <- buscoTable(genome,filename,newseqdb$SeqName)
+    if(nrow(newbusdb) > 0){
+      busdb <- bind_rows(busdb,newbusdb)
+    }
   }else{
     busdb <- buscoTable(genome,filename,newseqdb$SeqName)
   }
@@ -556,15 +576,6 @@ if(! settings$chromfill %in% colnames(seqdb)){
 }
 if(settings$chromfill == "Col" & "NA" %in% seqdb[[settings$chromfill]]){
   seqdb[seqdb[[settings$chromfill]] == "NA",][[settings$chromfill]] <- "white"
-}
-
-
-### ~ Optional sequence filter based on BUSCO data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
-if(! settings$orphans){
-  fulln <- nrow(seqdb)
-  buscseq <- group_by(busdb,Genome,SeqName) %>% summarise(Genome=first(Genome),SeqName=first(SeqName),N=n())
-  seqdb <- inner_join(seqdb,buscseq) %>% filter(N>0) %>% select(-N)
-  logWrite(paste("#ORPHAN Removed orphan sequences w/o BUSCOs:",fulln,"->",nrow(seqdb),"sequences."))
 }
 
 
@@ -640,9 +651,18 @@ if(settings$regdata != ""){
   linkdb <- regTable(settings$regdata) %>%
     filter(Length>=settings$minregion,HitLength>=settings$minregion)
   logWrite(paste('#REGION Reduced to',nrow(linkdb),"synteny blocks based on minregion=INT filtering."))
+  if(nrow(linkdb)){
+    linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen))
+    linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen) %>% rename(HitGenome=Genome,Hit=SeqName,HitSeqLen=SeqLen))
+    logWrite(paste('#REGION Reduced to',nrow(linkdb),"synteny blocks after removing filtered sequences."))
+  }
   if(nrow(regdb) > 0){
-    regdb <- bind_rows(regdb,linkdb)
-    logWrite(paste('#BLOCK',nrow(regdb),"combined region+BUSCO synteny blocks."))
+    if(nrow(linkdb) > 0){
+      regdb <- bind_rows(regdb,linkdb)
+      logWrite(paste('#BLOCK',nrow(regdb),"combined region+BUSCO synteny blocks."))
+    }else{
+      logWrite(paste('#BLOCK',nrow(regdb),"BUSCO synteny blocks: no loaded region links to add."))
+    }
   }else{
     regdb <- linkdb
   }
@@ -657,6 +677,16 @@ if(! nrow(regdb) & ! settings$dev){
     stop(msg)
   }
 }
+
+
+### ~ Optional sequence filter based on BUSCO & Link data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+if(! settings$orphans){
+  fulln <- nrow(seqdb)
+  buscseq <- group_by(regdb,Genome,SeqName) %>% summarise(Genome=first(Genome),SeqName=first(SeqName),N=n())
+  seqdb <- inner_join(seqdb,buscseq) %>% filter(N>0) %>% select(-N)
+  logWrite(paste("#ORPHAN Removed orphan sequences w/o synteny blocks:",fulln,"->",nrow(seqdb),"sequences."))
+}
+
 
 ##### ======================== Update Gap Colours ======================== #####
 #!# To do:
@@ -1035,15 +1065,26 @@ if(nrow(ftdb)){
   }else{
     ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + 1
   }
-  ftdb$RevStrand <- '.'
-  ftdb[ftdb$Strand == '+',]$RevStrand <- '-'
-  ftdb[ftdb$Strand == '-',]$RevStrand <- '+'
+  revstrand <- data.frame(Strand=c(".","+","-"),RevStrand=c(".","-","+"))
+  ftdb <- left_join(ftdb,revstrand)
   #i# Reverse the strand and position where needed for plotting
-  ftdb[ftdb$Rev, ]$Strand <- ftdb[ftdb$Rev, ]$RevStrand
-  ftdb[ftdb$Rev, ]$Pos <- ftdb[ftdb$Rev, ]$RevPos
+  badft <- ftdb[is.na(ftdb$Rev),]
+  if(settings$debug){
+    print(summary(ftdb))
+    logWrite(paste("Dropped:",paste(unique(badft$SeqName),collapse=", ")))
+  }
+  ftdb <- ftdb[! is.na(ftdb$Rev),]
+  if(sum(ftdb$Rev) > 0){
+    ftdb[ftdb$Rev, ]$Strand <- ftdb[ftdb$Rev, ]$RevStrand
+    ftdb[ftdb$Rev, ]$Pos <- ftdb[ftdb$Rev, ]$RevPos
+  }
   ftdb$yshift <- ftdb$yshift + 0.5
-  ftdb[ftdb$Strand == '-',]$yshift <- ftdb[ftdb$Strand == '-',]$yshift - 0.4
-  ftdb[ftdb$Strand == '+',]$yshift <- ftdb[ftdb$Strand == '+',]$yshift + 0.4
+  if("-" %in% ftdb$Strand){
+    ftdb[ftdb$Strand == '-',]$yshift <- ftdb[ftdb$Strand == '-',]$yshift - 0.4
+  }
+  if("+" %in% ftdb$Strand){
+    ftdb[ftdb$Strand == '+',]$yshift <- ftdb[ftdb$Strand == '+',]$yshift + 0.4
+  }
 }
 #i# Debug check
 if(settings$debug){
@@ -1176,12 +1217,18 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
       xb2 <- plotdb$HitEnd[i]
       # Check for reversals
       fwd <- plotdb$Strand[i] == "+"
+      # if(settings$debug){
+      #   logWrite(paste(plotdb$Genome[i],plotdb$SeqName[i]))
+      # }
       if(seqRev(seqdb,plotdb$Genome[i],plotdb$SeqName[i])){
         tmp <- seqLen(seqdb,plotdb$Genome[i],plotdb$SeqName[i]) - xa1 + revshift
         xa1 <- seqLen(seqdb,plotdb$Genome[i],plotdb$SeqName[i]) - xa2 + revshift
         xa2 <- tmp
         fwd <- ! fwd
       }
+      # if(settings$debug){
+      #   logWrite(paste(plotdb$HitGenome[i],plotdb$Hit[i]))
+      # }
       if(seqRev(seqdb,plotdb$HitGenome[i],plotdb$Hit[i])){
         tmp <- seqLen(seqdb,plotdb$HitGenome[i],plotdb$Hit[i]) - xb1 + revshift
         xb1 <- seqLen(seqdb,plotdb$HitGenome[i],plotdb$Hit[i]) - xb2 + revshift
@@ -1225,7 +1272,9 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
       axis.text.y=element_blank(),
       axis.ticks.y=element_blank()
     )
-
+  if(settings$labels){
+    plt <- plt + theme(legend.position = "None")
+  }
   return(plt)  
 }
 
