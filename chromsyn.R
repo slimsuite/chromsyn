@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.0.0                             ~~~~~ ###
-### LAST EDIT: 22/04/22                        ~~~~~ ###
+### VERSION: 1.1.1                             ~~~~~ ###
+### LAST EDIT: 03/05/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -27,7 +27,9 @@
 # v0.9.4 : Fixed regdata bugs. Moved orphan reduction to follow regdata incorporation.
 # v0.9.5 : Changed default feature plot to a black square with white fill. Enabled missing subsets of files.
 # v1.0.0 : Changed default plotting to remove legend. First release, corresponding to Myrtle Rust bioRxiv paper.
-version = "v1.0.0"
+# v1.1.0 : Added duplicated=T/F option for plotting Duplicated BUSCO genes and added features to xlsx output. Added Duplicated Gap output.
+# v1.1.1 : General bug fixes. Added minftlen=INT.
+version = "v1.1.1"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -43,12 +45,13 @@ version = "v1.0.0"
 # : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
 # : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
-# : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName Type or Col) [Genome]
+# : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
 # : minregion=INT = minimum length for mapped regions to be included in plots [50000]
 # : minbusco=INT = minimum number of BUSCO genes to be included in Syntenic block [1]
+# : minftlen=INT = minimum number of for features to be plotted [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
 # : orphans=T/F = whether to include scaffolds that have no BUSCO genes [True]
 # : tidkcutoff=INT = TIDK count cutoff for identifying a telomere [50]
@@ -98,8 +101,11 @@ version = "v1.0.0"
 #!# Add scale bar for tick marks.
 #!# Add an option to rescale all chromosomes to a proprtion of total, rather than actual size.
 #!# Add compilation of regdata synteny blocks like BUSCO blocks. Add a second regdata minlen cutoff (regfilter=X).
-#!# Add an option to incorporate Duplicated BUSCO genes into features table. (Yellow arrows)
-#!# Add the features table inc gaps and telomeres to the Excel output.
+#!# Add different gap modes (+ or line)
+#!# Add depth input for coloring of chromosome scaffolds.
+#!# Add more in-flight checks for data integrity.
+# : labels=X = Sequence table field to use as labels in plots [Label -> SeqName]
+# : genlabels=FILE = Option file of Genome Label to use in plots [labels.txt]
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -108,7 +114,7 @@ defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="
                 seqorder="",orient="auto",seqsort="auto",chromfill="Genome",
                 #pngwidth=1200,pngheight=900,
                 #pointsize=24,pngscale=100,
-                plotdir="./",
+                plotdir="./",duplicated=TRUE,minftlen=1,
                 tidkcutoff=50,tidk="tidk.fofn",gaps="gaps.fofn",ft="ft.fofn",
                 minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,ftsize=1,
                 pdfwidth=20,pdfheight=0,pdfscale=1,namesize=1,labelsize=1,labels=TRUE,
@@ -131,7 +137,7 @@ for(cmd in argvec){
   }
 }
 #i# integer parameters
-for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff")){
+for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff","minftlen")){
   settings[[cmd]] = as.integer(settings[[cmd]])
 }
 #i# other numeric parameter
@@ -148,14 +154,14 @@ if(settings$opacity > 1){
 }
 #i# list parameters
 for(cmd in c("order","seqorder")){
-  if(length(settings[[cmd]]) > 0){
+  if(sum(grep(",",settings[[cmd]],fixed=TRUE)) > 0){
     settings[[cmd]] = strsplit(settings[[cmd]],',',TRUE)[[1]]
   }else{
     settings[[cmd]] <- defaults[[cmd]]
   }
 }
 #i# logical parameters
-for(cmd in c("debug","dev","orphans","labels")){
+for(cmd in c("debug","dev","orphans","labels","duplicated")){
   settings[[cmd]] = as.logical(settings[[cmd]])
 }
 
@@ -172,6 +178,7 @@ logWrite <- function(logstr){
   writeLines(paste0("[",date(),"] ",logstr),con=settings$outlog)
 }
 logWrite(paste("#RCODE ChromSyn.R:",version))
+logWrite(paste("#PATH Running from:",getwd()))
 for(cmd in names(settings)[order(names(settings))]){
   logWrite(paste("CMD:",cmd,"=",paste0(settings[[cmd]],collapse=",")))
 }
@@ -252,7 +259,7 @@ v3head = c("BuscoID","Status","Contig","Start","End","Score","Length")
 #i# BUSCOv5 headings:
 v5head = c("BuscoID","Status","Contig","Start","End","Strand","Score","Length","OrthoDBURL","Description")
 #i# NOTE: URL and Description not always there.
-buscoTable <- function(genome,filename,seqnames=c()){
+buscoTable <- function(genome,filename,seqnames=c(),btype="Complete"){
   if(! file.exists(filename)){ return(data.frame()) }
   buscodb = read.table(filename,fill=TRUE,row.names = NULL,sep="\t",quote="",stringsAsFactors=FALSE)
   if(ncol(buscodb) > length(v5head)){
@@ -267,12 +274,13 @@ buscoTable <- function(genome,filename,seqnames=c()){
     colnames(buscodb) = v3head
   }
   buscodb$Contig = as.character(buscodb$Contig)
-  buscodb <- buscodb[buscodb$Status == "Complete",]
-  logWrite(paste('#BUSCO',nrow(buscodb),genome,"Complete BUSCO genes loaded from",filename))
+  buscodb <- buscodb[buscodb$Status == btype,]
+  logWrite(paste('#BUSCO',nrow(buscodb),genome,btype,"BUSCO genes loaded from",filename))
   if(nrow(buscodb) > 0){
     buscodb$Genome <- genome
     buscodb$Start <- as.integer(buscodb$Start)
     buscodb$End <- as.integer(buscodb$End)
+    buscodb <- buscodb[! is.na(buscodb$Start) & ! is.na(buscodb$End), ]
   }else{
     buscodb <- buscodb %>% mutate(Genome="")
   }
@@ -280,7 +288,7 @@ buscoTable <- function(genome,filename,seqnames=c()){
   #i# Filter to sequences if given
   if(length(seqnames) > 0){
     buscodb <- buscodb[buscodb$SeqName %in% seqnames,]
-    logWrite(paste('#BUSCO',nrow(buscodb),genome,"Complete BUSCO genes following filtering to",length(seqnames),"sequences."))
+    logWrite(paste('#BUSCO',nrow(buscodb),genome,btype,"BUSCO genes following filtering to",length(seqnames),"sequences."))
   }
   return(buscodb)
 }
@@ -340,23 +348,37 @@ ftTable <- function(genome,filename,colour="white",shape=22){
   }
   ftdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   if(nrow(ftdb) > 0){
-    ftdb$Genome <- genome
-  }else{
-    ftdb <- ftdb %>% mutate(Genome = "")
-  }
-  for(ftfield in c("SeqName","Pos","Strand","Col","Shape","Start","End")){
-    if(tolower(ftfield) %in% colnames(ftdb)){
-      ftdb[[ftfield]] <- ftdb[[tolower(ftfield)]]
+    for(ftfield in c("SeqName","Pos","Strand","Col","Shape","Start","End")){
+      if(tolower(ftfield) %in% colnames(ftdb)){
+        ftdb[[ftfield]] <- ftdb[[tolower(ftfield)]]
+      }
+    }
+    if(settings$minftlen > 1 && "Start" %in% colnames(ftdb) && "End" %in% colnames(ftdb)){
+      prex <- nrow(ftdb)
+      ftdb <- ftdb[(ftdb$End - ftdb$Start + 1) >= settings$minftlen,]
+      logWrite(paste(prex,"features reduced to",nrow(ftdb),"on minftlen (length <",settings$minftlen,"bp)"))
     }
   }
+  if(nrow(ftdb) > 0){
+    ftdb$Genome <- genome
+  }else{
+    logWrite(paste('#FT',nrow(ftdb),"features loaded from",filename))
+    return(data.frame())
+  }
+  
   if(! "Pos" %in% colnames(ftdb)){
     ftdb <- mutate(ftdb,Pos=(End+Start)/2)
   }
   if(! "Strand" %in% colnames(ftdb)){
     ftdb$Strand <- "."  # Unstranded
   }
+  for(oddstrand in c("+/-","+-","-+")){
+    if(oddstrand %in% ftdb$Strand){
+      ftdb[ftdb$Strand == oddstrand,]$Strand <- "."
+    }
+  }
   if(! "Col" %in% colnames(ftdb)){
-    ftdb$Col <- colour  # Defaults to darkgreen
+    ftdb$Col <- colour  # Defaults to white
   }
   if(! "Shape" %in% colnames(ftdb)){
     ftdb$Shape <- shape  # Defaults to square (3 = + for gaps)
@@ -366,7 +388,10 @@ ftTable <- function(genome,filename,colour="white",shape=22){
   if(sum(openrow)){
     ftdb[openrow,]$Col <- "black"
   }
-  ftdb <- select(ftdb,Genome, SeqName, Pos, Strand, Col, Fill, Shape)
+  if(! "Feature" %in% colnames(ftdb)){
+    ftdb <- mutate(ftdb,Feature="Feature")
+  }
+  ftdb <- select(ftdb,Genome, SeqName, Pos, Strand, Feature, Col, Fill, Shape)
   logWrite(paste('#FT',nrow(ftdb),"features loaded from",filename))
   return(ftdb)
 }
@@ -386,6 +411,10 @@ seqLen <- function(seqdb,genome,seqname){
 #i# Returns whether sequence "seqname" in genome "genome" has been reversed
 seqRev <- function(seqdb,genome,seqname){
   seqrev <- seqdb %>% filter(Genome==genome,SeqName==seqname) %>% select(Rev)
+  if(length(seqrev$Rev) < 1 | is.na(seqrev$Rev[1])){
+    logWrite(paste0('Warning: problem with SeqRev(',genome,",",seqname,")"))
+    return(FALSE)
+  }
   return(seqrev$Rev[1])
 }
 
@@ -491,6 +520,7 @@ genomes <- settings$order
 #i# Load actual sequence and busco data
 seqdb <- data.frame()
 busdb <- data.frame()
+dupdb <- data.frame()
 teldb <- data.frame()
 gapdb <- data.frame()
 ftdb <- data.frame()
@@ -521,6 +551,16 @@ for(genome in genomes){
     }
   }else{
     busdb <- buscoTable(genome,filename,newseqdb$SeqName)
+  }
+  #i# BUSCO Duplicated
+  filename <- gendb[genome,"BUSCO"]
+  if(nrow(dupdb) > 0){
+    newbusdb <- buscoTable(genome,filename,newseqdb$SeqName,"Duplicated")
+    if(nrow(newbusdb) > 0){
+      dupdb <- bind_rows(dupdb,newbusdb)
+    }
+  }else{
+    dupdb <- buscoTable(genome,filename,newseqdb$SeqName,"Duplicated")
   }
   #i# TIDK
   filename <- gendb[genome,"TIDK"]
@@ -556,8 +596,18 @@ for(genome in genomes){
     }
   }
 }
+#i# Duplicated table update
+dupdb$Pos <- (dupdb$End + dupdb$Start) / 2
+dupdb <- select(dupdb, Genome, SeqName, Pos, Strand, BuscoID) %>% rename(Feature=BuscoID)
+if(nrow(dupdb)){
+  dupdb$Col <- "black"
+  dupdb$Fill <- "yellow"
+  dupdb$Shape <- -1
+}
+#i# Summary
 logWrite(paste("#SEQS ",nrow(seqdb),"sequences loaded in total."))
-logWrite(paste("#BUSCO ",nrow(busdb),"BUSCO genes loaded in total."))
+logWrite(paste("#BUSCO ",nrow(busdb),"Complete BUSCO genes loaded in total."))
+logWrite(paste("#DUPL ",nrow(dupdb),"Duplicated BUSCO genes loaded in total."))
 logWrite(paste("#TIDK ",nrow(teldb),"TIDK telomere windows loaded in total."))
 logWrite(paste("#FT ",nrow(ftdb),"features loaded in total."))
 logWrite(paste("#GAPS ",nrow(gapdb),"assembly gaps loaded in total."))
@@ -901,6 +951,7 @@ for(genome in names(seqorder)){
 if(settings$debug){
   logWrite(paste("#SEQS",nrow(seqdb),"sequences in total."))
   logWrite(paste("#BUSCO",nrow(busdb),"BUSCO genes in total."))
+  logWrite(paste("#DUPL",nrow(dupdb),"Duplicated BUSCO genes in total."))
   logWrite(paste("#TIDK",nrow(teldb),"TIDK telomere windows in total."))
   logWrite(paste("#FT",nrow(ftdb),"features in total."))
   logWrite(paste("#GAPS",nrow(gapdb),"assembly gaps in total."))
@@ -947,6 +998,7 @@ if(settings$scale == "pc"){
   # Rescale seqdb, busdb, ftdb, gapdb, regdb, teldb
   seqdb <- pcScale(gendb,seqdb,"Sequences")
   busdb <- pcScale(gendb,busdb,"BUSCO")
+  dupdb <- pcScale(gendb,dupdb,"Duplicated")
   ftdb <- pcScale(gendb,ftdb,"Features")
   gapdb <- pcScale(gendb,gapdb,"Gaps")
   regdb <- pcScale(gendb,regdb,"Synteny")
@@ -1021,8 +1073,10 @@ for(genome in settings$order){
 logWrite("TIDK Telomeres...")
 #i# Combine with seqdb to get xshift and yshift
 #i# Update teldb to have the correct xshift and yshift information, reversing where needed
-teldb <- right_join(teldb,seqdb)
-teldb <- teldb[! is.na(teldb$Pos),]
+if(nrow(teldb)){
+  teldb <- right_join(teldb,seqdb)
+  teldb <- teldb[! is.na(teldb$Pos),]
+}
 if(nrow(teldb)){
   if(settings$scale == "pc"){
     teldb$RevPos <- teldb$SeqLen - teldb$Pos + (1 / teldb$GenLen)
@@ -1044,7 +1098,7 @@ seqdb <- mutate(seqdb,Size=settings$ftsize)
 logWrite("Gaps and Features...")
 #i# Combine with seqdb to get xshift and yshift
 #i# Update ftdb to have the correct xshift and yshift information, reversing where needed
-gapdb <- mutate(gapdb,Size=1)
+gapdb <- mutate(gapdb,Size=1,Feature="Gap")
 ftdb <- mutate(ftdb,Size=settings$ftsize)
 if(nrow(ftdb)){
   ftdb <- left_join(ftdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift))
@@ -1058,6 +1112,27 @@ if(nrow(ftdb)){
   }
   ftdb <- ftdb[! is.na(ftdb$Pos),]
 }
+#i# Add Duplicated BUSCOs
+dupdb <- mutate(dupdb,Size=settings$ftsize)
+if(nrow(ftdb)){
+  if(nrow(dupdb)){
+    ftdb <- bind_rows(ftdb,left_join(dupdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift)))
+  }
+  ftdb <- ftdb[! is.na(ftdb$Pos),]
+}else{
+  if(nrow(dupdb)){
+    ftdb <- left_join(dupdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift))
+  }
+  ftdb <- ftdb[! is.na(ftdb$Pos),]
+}
+#i# Correct any dodgy data
+if(nrow(ftdb)){
+  ftdb$Shape <- as.integer(ftdb$Shape)
+  if(sum(is.na(ftdb$Shape)) > 0){
+    ftdb[is.na(ftdb$Shape),]$Shape <- 22
+  }
+}
+
 #i# Reverse the features where required
 if(nrow(ftdb)){
   if(settings$scale == "pc"){
@@ -1081,9 +1156,19 @@ if(nrow(ftdb)){
   ftdb$yshift <- ftdb$yshift + 0.5
   if("-" %in% ftdb$Strand){
     ftdb[ftdb$Strand == '-',]$yshift <- ftdb[ftdb$Strand == '-',]$yshift - 0.4
+    drows <- ftdb$Strand == '-' & ftdb$Shape == -1
+    if(sum(drows) > 0){
+      ftdb[drows,]$yshift <- ftdb[drows,]$yshift - 0.1
+      ftdb[drows,]$Shape <- 25
+    }
   }
   if("+" %in% ftdb$Strand){
     ftdb[ftdb$Strand == '+',]$yshift <- ftdb[ftdb$Strand == '+',]$yshift + 0.4
+    drows <- ftdb$Strand == '+' & ftdb$Shape == -1
+    if(sum(drows) > 0){
+      ftdb[drows,]$yshift <- ftdb[drows,]$yshift + 0.1
+      ftdb[drows,]$Shape <- 24
+    }
   }
 }
 #i# Debug check
@@ -1091,12 +1176,24 @@ if(settings$debug){
   logWrite(paste("#SEQS",nrow(seqdb),"sequences in total."))
   logWrite(paste("#BUSCO",nrow(busdb),"BUSCO genes in total."))
   logWrite(paste("#TIDK",nrow(teldb),"TIDK telomere windows in total."))
-  logWrite(paste("#FT",nrow(ftdb),"features+gaps in total."))
+  logWrite(paste("#FT",nrow(ftdb),"features+gaps+dupl in total."))
   logWrite(paste("#GAPS",nrow(gapdb),"assembly gaps in total."))
 }
 
 
-
+##### ======================== Add Gep warnings ======================== #####
+ftdb <- arrange(ftdb,Genome,SeqName,Pos)
+#!# Find gaps between synteny blocks
+#!# Find gaps between telomere pairs
+#!@ Find telomeres between synteny blocks
+### ~ Gaps between Duplicated BUSCOs ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+fi <- 3:nrow(ftdb)
+dupgap <- ftdb$Feature[fi] %in% dupdb$Feature & ftdb$Feature[fi-1] == "Gap" & ftdb$Feature[fi] == ftdb$Feature[fi-2]
+logWrite(paste(sum(dupgap),"potential false duplication gap(s) (mis-scaffolding) identified"))
+fdupdb <- data.frame()
+if(sum(dupgap)>0){
+  fdupdb <- ftdb[c(FALSE,dupgap,FALSE),]
+}
 
 ##### ======================== Save data to Excel ======================== #####
 ### ~ Save data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -1106,13 +1203,19 @@ if(settings$writexl){
   }else{
     outfile = paste0(settings$basefile,".chromsyn.xlsx")
   }
-  X <- list(Genomes=gendb,Sequences=seqdb,BUSCO=busdb,Regions=regdb,Hits=hitdb,Best=bestdb,Positions=posdb)
+  xlftdb <- select(ftdb,Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape)
+  X <- list(Genomes=gendb,Sequences=seqdb,BUSCO=busdb,Regions=regdb,Hits=hitdb,Best=bestdb,Positions=posdb,Telomeres=teldb,Features=xlftdb)
+  if(nrow(fdupdb)){
+    X$DupGap <- fdupdb    
+  }
   write_xlsx(
     x = X,
     path = outfile
   )
   logWrite(paste("#XLSX Tabs:",paste(names(X),collapse=",")))
   logWrite(paste("#SAVE","All chromsyn data output to",outfile))
+}else{
+  logWrite("#XLXS No Excel output: check writexl=T/F setting and writexl package installation if expected.")
 }
 
 
@@ -1299,7 +1402,7 @@ while(! plotted & plotsplits < linknum){
         plt <- NA
         if(plotsplits > 1){
           linkn <- round(linknum/plotsplits) + 1
-          linkages <- 1:linkn + (linkn-1) * (px - 1)
+          linkages <- 1:linkn + max(0, linkn * (px - 1) -1 )
           linkages <- linkages[linkages <= linknum]
           if(settings$debug){
             cat(linkages)
