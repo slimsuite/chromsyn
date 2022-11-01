@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v1.1.1`. (Check the chromsyn.R file to be sure!)
+The current version should be `v1.1.4`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 

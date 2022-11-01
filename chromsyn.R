@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.1.1                             ~~~~~ ###
-### LAST EDIT: 03/05/22                        ~~~~~ ###
+### VERSION: 1.1.4                             ~~~~~ ###
+### LAST EDIT: 01/11/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -29,7 +29,10 @@
 # v1.0.0 : Changed default plotting to remove legend. First release, corresponding to Myrtle Rust bioRxiv paper.
 # v1.1.0 : Added duplicated=T/F option for plotting Duplicated BUSCO genes and added features to xlsx output. Added Duplicated Gap output.
 # v1.1.1 : General bug fixes. Added minftlen=INT.
-version = "v1.1.1"
+# v1.1.2 : Enforced loading sequence names as character.
+# v1.1.3 : Fixed some bugs when there are missing data in places.
+# v1.1.4 : Fixed bug with reverse chrom not plotting Duplicated genes.
+version = "v1.1.4"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -231,6 +234,7 @@ seqTable <- function(genome,filename,delimit="\t"){
   if("name" %in% colnames(seqdb)){
     seqdb <- seqdb %>% rename(SeqName=name,SeqLen=length)
   }
+  seqdb$SeqName <- as.character(seqdb$SeqName)
   if(! "Tel5" %in% colnames(seqdb)){
     seqdb$Tel5 <- FALSE
     seqdb$Tel3 <- FALSE
@@ -306,6 +310,8 @@ regTable <- function(filename,delimit="\t"){
     regdb <- mutate(regdb,HitLength=HitEnd-HitStart+1)
   }
   regdb <- select(regdb,Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd, Length, HitLength)
+  regdb$SeqName <- as.character(regdb$SeqName)
+  regdb$Hit <- as.character(regdb$Hit)
   #?# Check the fields
   logWrite(paste('#REGION',nrow(regdb),"linked regions loaded from",filename))
   return(regdb)
@@ -331,7 +337,10 @@ tidkTable <- function(genome,filename,delimit=","){
   # if(nrow(tel3)){
   #   tel3$Strand <- "-"
   # }
-  tidkdb <- bind_rows(tel5,tel3) 
+  tidkdb <- bind_rows(tel5,tel3)
+  if(nrow(tidkdb) > 0){
+    tidkdb$SeqName <- as.character(tidkdb$SeqName)
+  }
   #?# Check the fields: Genome, SeqName, Pos, Strand
   logWrite(paste('#TIDK',nrow(tidkdb),"TIDK telomere windows loaded from",filename))
   return(tidkdb)
@@ -392,6 +401,9 @@ ftTable <- function(genome,filename,colour="white",shape=22){
     ftdb <- mutate(ftdb,Feature="Feature")
   }
   ftdb <- select(ftdb,Genome, SeqName, Pos, Strand, Feature, Col, Fill, Shape)
+  if(nrow(ftdb) > 0){
+    ftdb$SeqName <- as.character(ftdb$SeqName)
+  }
   logWrite(paste('#FT',nrow(ftdb),"features loaded from",filename))
   return(ftdb)
 }
@@ -410,6 +422,10 @@ seqLen <- function(seqdb,genome,seqname){
 #i# Call seqRev(seqdb,genome,seqname)
 #i# Returns whether sequence "seqname" in genome "genome" has been reversed
 seqRev <- function(seqdb,genome,seqname){
+  if(is.na(seqname)){
+    logWrite(paste0('Warning: problem with missing seqname for ',genome))
+    return(FALSE)
+  }
   seqrev <- seqdb %>% filter(Genome==genome,SeqName==seqname) %>% select(Rev)
   if(length(seqrev$Rev) < 1 | is.na(seqrev$Rev[1])){
     logWrite(paste0('Warning: problem with SeqRev(',genome,",",seqname,")"))
@@ -449,18 +465,8 @@ if(! file.exists(settings$regdata)){
 }else{
   logWrite(paste("Region data file:",settings$regdata))
 }
-#i# BUSCO tables
-buscofofn = settings$busco
-logWrite(paste("BUSCO FOFN file:",buscofofn))
-if(! file.exists(buscofofn) & settings$regdata == ""){
-  if(settings$rscript){
-    quit("no",2)  
-  }else{
-    stop(paste("Cannot find BUSCO FOFN file:",buscofofn))
-  }
-}
 #i# Optional extra tables: TIDK, gaps, ft
-filechecks <- list(tidk="TIDK", gaps="Assembly gap", ft="features table")
+filechecks <- list(tidk="TIDK", gaps="Assembly gap", ft="features table", busco="BUSCO full")
 for(ftype in names(filechecks)){
   ffile <- settings[[ftype]]
   if(file.exists(ffile)){
@@ -469,6 +475,17 @@ for(ftype in names(filechecks)){
     if(ffile != ""){
       logWrite(paste(filechecks[[ftype]],"FOFN file not found:",ffile))
     }
+  }
+}
+#i# BUSCO tables
+buscofofn = settings$busco
+logWrite(paste("BUSCO FOFN file:",buscofofn))
+if(! file.exists(buscofofn) & settings$regdata == ""){
+  logWrite(paste("No BUSCO FOFN data file found."))
+  if(settings$rscript){
+    quit("no",2)  
+  }else{
+    stop(paste("Cannot find BUSCO FOFN file:",buscofofn))
   }
 }
 logWrite('#RCODE Setup complete.')
@@ -565,8 +582,11 @@ for(genome in genomes){
   #i# TIDK
   filename <- gendb[genome,"TIDK"]
   if(! is.na(filename)){
+    newdb <- tidkTable(genome,filename)
     if(nrow(teldb) > 0){
-      teldb <- bind_rows(teldb,tidkTable(genome,filename))
+      if(nrow(newdb)){
+        teldb <- bind_rows(teldb,newdb)
+      }
     }else{
       teldb <- tidkTable(genome,filename)
     }
@@ -728,7 +748,6 @@ if(! nrow(regdb) & ! settings$dev){
   }
 }
 
-
 ### ~ Optional sequence filter based on BUSCO & Link data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 if(! settings$orphans){
   fulln <- nrow(seqdb)
@@ -736,6 +755,19 @@ if(! settings$orphans){
   seqdb <- inner_join(seqdb,buscseq) %>% filter(N>0) %>% select(-N)
   logWrite(paste("#ORPHAN Removed orphan sequences w/o synteny blocks:",fulln,"->",nrow(seqdb),"sequences."))
 }
+
+### ~ Filter genomes without any synteny blocks ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+seqgenomes <- unique(seqdb$Genome)
+badgenomes <- gendb$Genome[! gendb$Genome %in% seqgenomes]
+if(length(badgenomes) > 0){
+  logWrite(paste('#NOSEQ',length(badgenomes),'without sequences following filters: check minregion, minbusco, minlen and orphan settings'))
+  seqdb <- seqdb[seqdb$Genome %in% seqgenomes,]
+  gendb <- gendb[gendb$Genome %in% seqgenomes,]
+  settings$order <- settings$order[settings$order %in% seqgenomes]
+}
+#gendb$Genome
+#settings$order
+
 
 
 ##### ======================== Update Gap Colours ======================== #####
@@ -937,7 +969,10 @@ for(genome in names(seqorder)){
   seqnames <- unique(seqdb[seqdb$Genome == genome,]$SeqName)
   badseq <- seqorder[[genome]][! seqorder[[genome]] %in% seqnames]
   if(length(badseq)>0){
-    logWrite(paste("Some ordered",genome,"sequences missing. Removed as orphans?:",paste(badseq,collapse=", ")))
+    #?# Why is "" sometimes in the query genome order?!
+    if(length(badseq)>1 | badseq[1] != ""){ 
+      logWrite(paste("Some ordered",genome,"sequences missing. Removed as orphans?:",paste(badseq,collapse=", ")))
+    }
     seqorder[[genome]] <- seqorder[[genome]][seqorder[[genome]] %in% seqnames]
   }
   misseq <- seqnames[! seqnames %in% seqorder[[genome]]]
@@ -1084,12 +1119,18 @@ if(nrow(teldb)){
     teldb$RevPos <- teldb$SeqLen - teldb$Pos + 1
   }
   teldb$RevStrand <- '+'
-  teldb[teldb$Strand == '+',]$RevStrand <- '-'
+  if('+' %in% teldb$Strand){
+    teldb[teldb$Strand == '+',]$RevStrand <- '-'
+  }
   #i# Reverse the strand and position where needed for plotting
-  teldb[teldb$Rev, ]$Strand <- teldb[teldb$Rev, ]$RevStrand
-  teldb[teldb$Rev, ]$Pos <- teldb[teldb$Rev, ]$RevPos
+  if(sum(teldb$Rev)>0){
+    teldb[teldb$Rev, ]$Strand <- teldb[teldb$Rev, ]$RevStrand
+    teldb[teldb$Rev, ]$Pos <- teldb[teldb$Rev, ]$RevPos
+  }
   teldb$yshift <- teldb$yshift + 0.25
-  teldb[teldb$Strand == '-',]$yshift <- teldb[teldb$Strand == '-',]$yshift + 0.5
+  if('-' %in% teldb$Strand){
+    teldb[teldb$Strand == '-',]$yshift <- teldb[teldb$Strand == '-',]$yshift + 0.5
+  }
 }
 teldb <- mutate(teldb,Size=settings$ftsize)
 seqdb <- mutate(seqdb,Size=settings$ftsize)
@@ -1099,8 +1140,8 @@ logWrite("Gaps and Features...")
 #i# Combine with seqdb to get xshift and yshift
 #i# Update ftdb to have the correct xshift and yshift information, reversing where needed
 gapdb <- mutate(gapdb,Size=1,Feature="Gap")
-ftdb <- mutate(ftdb,Size=settings$ftsize)
 if(nrow(ftdb)){
+  ftdb <- mutate(ftdb,Size=settings$ftsize)
   ftdb <- left_join(ftdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift))
   if(nrow(gapdb)){
     ftdb <- bind_rows(ftdb,left_join(gapdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift)))
@@ -1113,7 +1154,8 @@ if(nrow(ftdb)){
   ftdb <- ftdb[! is.na(ftdb$Pos),]
 }
 #i# Add Duplicated BUSCOs
-dupdb <- mutate(dupdb,Size=settings$ftsize)
+ftdb <- ftdb %>% select(Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape,Size,SeqLen,Rev,xshift,yshift)
+dupdb <- mutate(dupdb,Size=settings$ftsize) %>% rename(Feature=BuscoID) %>% select(Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape,Size)
 if(nrow(ftdb)){
   if(nrow(dupdb)){
     ftdb <- bind_rows(ftdb,left_join(dupdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift)))
@@ -1154,6 +1196,7 @@ if(nrow(ftdb)){
     ftdb[ftdb$Rev, ]$Pos <- ftdb[ftdb$Rev, ]$RevPos
   }
   ftdb$yshift <- ftdb$yshift + 0.5
+  #i# Update directional triangles for -1 shapes
   if("-" %in% ftdb$Strand){
     ftdb[ftdb$Strand == '-',]$yshift <- ftdb[ftdb$Strand == '-',]$yshift - 0.4
     drows <- ftdb$Strand == '-' & ftdb$Shape == -1
@@ -1181,7 +1224,7 @@ if(settings$debug){
 }
 
 
-##### ======================== Add Gep warnings ======================== #####
+##### ======================== Add Gap warnings ======================== #####
 ftdb <- arrange(ftdb,Genome,SeqName,Pos)
 #!# Find gaps between synteny blocks
 #!# Find gaps between telomere pairs
@@ -1415,11 +1458,11 @@ while(! plotted & plotsplits < linknum){
         }
         print(plt)
         plotfile <- paste0(plotbase,".pdf")
-        ggsave(plotfile,plot=plt,device="pdf",path=settings$plotdir,width=pdfwidth,height=pdfheight,scale=settings$pdfscale)
+        ggsave(plotfile,plot=plt,device="pdf",path=settings$plotdir,width=pdfwidth,height=pdfheight,scale=settings$pdfscale,limitsize = FALSE)
         logWrite(paste0('#GGSAVE Saved output plot to ',settings$plotdir,plotfile))
 
         plotfile <- paste0(plotbase,".png")
-        ggsave(plotfile,plot=plt,device="png",path=settings$plotdir,width=pdfwidth,height=pdfheight,scale=settings$pdfscale)
+        ggsave(plotfile,plot=plt,device="png",path=settings$plotdir,width=pdfwidth,height=pdfheight,scale=settings$pdfscale,limitsize = FALSE)
         logWrite(paste0('#GGSAVE Saved output plot to ',settings$plotdir,plotfile))
         
         # pngfile <- paste0(plotbase,".png")
@@ -1451,6 +1494,9 @@ while(! plotted & plotsplits < linknum){
 
 
 ##### ======================== Tidy and Finish ======================== #####
+if(file.exists("Rplots.pdf")){
+  file.remove("Rplots.pdf")
+}
 
 ### ~ Finish ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 options(warn = oldwarn)
