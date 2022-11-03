@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.1.5                             ~~~~~ ###
-### LAST EDIT: 01/11/22                        ~~~~~ ###
+### VERSION: 1.1.6                             ~~~~~ ###
+### LAST EDIT: 03/11/22                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -33,7 +33,8 @@
 # v1.1.3 : Fixed some bugs when there are missing data in places.
 # v1.1.4 : Fixed bug with reverse chrom not plotting Duplicated genes.
 # v1.1.5 : Fixed Duplicated BUSCO loading bug introduced by v1.1.4.
-version = "v1.1.5"
+# v1.1.6 : Fixed gap-free plotting bug introduced by v1.1.5.
+version = "v1.1.6"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -1155,8 +1156,12 @@ if(nrow(ftdb)){
   ftdb <- ftdb[! is.na(ftdb$Pos),]
 }
 #i# Add Duplicated BUSCOs
-ftdb <- ftdb %>% select(Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape,Size,SeqLen,Rev,xshift,yshift)
-dupdb <- mutate(dupdb,Size=settings$ftsize) %>% select(Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape,Size)
+if(nrow(ftdb)){
+  ftdb <- ftdb %>% select(Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape,Size,SeqLen,Rev,xshift,yshift)
+}
+if(nrow(dupdb)){
+  dupdb <- mutate(dupdb,Size=settings$ftsize) %>% select(Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape,Size)
+}
 if(nrow(ftdb)){
   if(nrow(dupdb)){
     ftdb <- bind_rows(ftdb,left_join(dupdb,seqdb %>% select(Genome,SeqName,SeqLen,Rev,xshift,yshift)))
