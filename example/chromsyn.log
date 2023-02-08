@@ -1,0 +1,123 @@
+[Wed Feb  8 16:38:36 2023] #RCODE ChromSyn.R: v1.1.6
+[Wed Feb  8 16:38:36 2023] #PATH Running from: /Users/00110092/Library/CloudStorage/OneDrive-UNSW/projects/Bilby-Jul19/analysis/2022-03-24.ChromSyn/githubdev/example
+[Wed Feb  8 16:38:36 2023] CMD: align = justify
+[Wed Feb  8 16:38:36 2023] CMD: basefile = chromsyn
+[Wed Feb  8 16:38:36 2023] CMD: busco = busco.fofn
+[Wed Feb  8 16:38:36 2023] CMD: chromfill = Genome
+[Wed Feb  8 16:38:36 2023] CMD: debug = FALSE
+[Wed Feb  8 16:38:36 2023] CMD: dev = FALSE
+[Wed Feb  8 16:38:36 2023] CMD: duplicated = TRUE
+[Wed Feb  8 16:38:36 2023] CMD: focus = 
+[Wed Feb  8 16:38:36 2023] CMD: ft = ft.fofn
+[Wed Feb  8 16:38:36 2023] CMD: ftsize = 2
+[Wed Feb  8 16:38:36 2023] CMD: gaps = gaps.fofn
+[Wed Feb  8 16:38:36 2023] CMD: labels = TRUE
+[Wed Feb  8 16:38:36 2023] CMD: labelsize = 1
+[Wed Feb  8 16:38:36 2023] CMD: maxskip = 0
+[Wed Feb  8 16:38:36 2023] CMD: minbusco = 1
+[Wed Feb  8 16:38:36 2023] CMD: minftlen = 1
+[Wed Feb  8 16:38:36 2023] CMD: minlen = 0
+[Wed Feb  8 16:38:36 2023] CMD: minregion = 50000
+[Wed Feb  8 16:38:36 2023] CMD: namesize = 1
+[Wed Feb  8 16:38:36 2023] CMD: opacity = 0.3
+[Wed Feb  8 16:38:36 2023] CMD: order = 
+[Wed Feb  8 16:38:36 2023] CMD: orient = auto
+[Wed Feb  8 16:38:36 2023] CMD: orphans = TRUE
+[Wed Feb  8 16:38:36 2023] CMD: outlog = 1
+[Wed Feb  8 16:38:36 2023] CMD: pdfheight = 0
+[Wed Feb  8 16:38:36 2023] CMD: pdfscale = 1
+[Wed Feb  8 16:38:36 2023] CMD: pdfwidth = 20
+[Wed Feb  8 16:38:36 2023] CMD: plotdir = ./
+[Wed Feb  8 16:38:36 2023] CMD: pngheight = 
+[Wed Feb  8 16:38:36 2023] CMD: pngscale = 
+[Wed Feb  8 16:38:36 2023] CMD: pngwidth = 
+[Wed Feb  8 16:38:36 2023] CMD: pointsize = 
+[Wed Feb  8 16:38:36 2023] CMD: regdata = 
+[Wed Feb  8 16:38:36 2023] CMD: rscript = TRUE
+[Wed Feb  8 16:38:36 2023] CMD: scale = Mb
+[Wed Feb  8 16:38:36 2023] CMD: seqorder = 
+[Wed Feb  8 16:38:36 2023] CMD: seqsort = auto
+[Wed Feb  8 16:38:36 2023] CMD: sequences = sequences.fofn
+[Wed Feb  8 16:38:36 2023] CMD: textshift = 0.3
+[Wed Feb  8 16:38:36 2023] CMD: ticks = 5e+07
+[Wed Feb  8 16:38:36 2023] CMD: tidk = tidk.fofn
+[Wed Feb  8 16:38:36 2023] CMD: tidkcutoff = 50
+[Wed Feb  8 16:38:36 2023] CMD: ygap = 4
+[Wed Feb  8 16:38:36 2023] CMD: ypad = 0.1
+[Wed Feb  8 16:38:38 2023] Sequence FOFN File: sequences.fofn
+[Wed Feb  8 16:38:38 2023] No region data file given.
+[Wed Feb  8 16:38:38 2023] TIDK FOFN file: tidk.fofn
+[Wed Feb  8 16:38:38 2023] Assembly gap FOFN file: gaps.fofn
+[Wed Feb  8 16:38:38 2023] features table FOFN file not found: ft.fofn
+[Wed Feb  8 16:38:38 2023] BUSCO full FOFN file: busco.fofn
+[Wed Feb  8 16:38:38 2023] BUSCO FOFN file: busco.fofn
+[Wed Feb  8 16:38:38 2023] #RCODE Setup complete.
+[Wed Feb  8 16:38:38 2023] #FOFN 3 filenames loaded from sequences.fofn
+[Wed Feb  8 16:38:38 2023] #FOFN 3 filenames loaded from busco.fofn
+[Wed Feb  8 16:38:38 2023] #FOFN 3 filenames after filtering to recognised genomes.
+[Wed Feb  8 16:38:38 2023] Genomes (order=LIST): ensDEVIL, ensMONDO, ensPLATY
+[Wed Feb  8 16:38:38 2023] #FOFN 3 filenames loaded from tidk.fofn
+[Wed Feb  8 16:38:38 2023] #FOFN 3 filenames after filtering to recognised genomes.
+[Wed Feb  8 16:38:38 2023] #FOFN 3 filenames loaded from gaps.fofn
+[Wed Feb  8 16:38:38 2023] #FOFN 3 filenames after filtering to recognised genomes.
+[Wed Feb  8 16:38:38 2023] #GENOME  3 genomes: ensDEVIL, ensMONDO, ensPLATY
+[Wed Feb  8 16:38:38 2023] ensDEVIL...
+[Wed Feb  8 16:38:38 2023] #SEQS 8 ensDEVIL sequences loaded from gendata/ensDEVIL.telomeres.tdt
+[Wed Feb  8 16:38:38 2023] #SEQS 8 ensDEVIL sequences meet minlen cutoff of 0 bp
+[Wed Feb  8 16:38:38 2023] #BUSCOV BUSCO v5 format
+[Wed Feb  8 16:38:38 2023] #BUSCO 8328 ensDEVIL Complete BUSCO genes loaded from gendata/ensDEVIL.busco5.tsv
+[Wed Feb  8 16:38:38 2023] #BUSCO 8328 ensDEVIL Complete BUSCO genes following filtering to 8 sequences.
+[Wed Feb  8 16:38:38 2023] #BUSCOV BUSCO v5 format
+[Wed Feb  8 16:38:38 2023] #BUSCO 278 ensDEVIL Duplicated BUSCO genes loaded from gendata/ensDEVIL.busco5.tsv
+[Wed Feb  8 16:38:38 2023] #BUSCO 278 ensDEVIL Duplicated BUSCO genes following filtering to 8 sequences.
+[Wed Feb  8 16:38:38 2023] #TIDK 0 TIDK telomere windows loaded from gendata/ensDEVIL.tidk.csv
+[Wed Feb  8 16:38:38 2023] #TIDK 0 TIDK telomere windows loaded from gendata/ensDEVIL.tidk.csv
+[Wed Feb  8 16:38:38 2023] #FT 335 features loaded from gendata/ensDEVIL.gaps.tdt
+[Wed Feb  8 16:38:38 2023] ensMONDO...
+[Wed Feb  8 16:38:38 2023] #SEQS 10 ensMONDO sequences loaded from gendata/ensMONDO.telomeres.tdt
+[Wed Feb  8 16:38:38 2023] #SEQS 10 ensMONDO sequences meet minlen cutoff of 0 bp
+[Wed Feb  8 16:38:38 2023] #BUSCOV BUSCO v5 format
+[Wed Feb  8 16:38:38 2023] #BUSCO 7781 ensMONDO Complete BUSCO genes loaded from gendata/ensMONDO.busco5.tsv
+[Wed Feb  8 16:38:38 2023] #BUSCO 7620 ensMONDO Complete BUSCO genes following filtering to 10 sequences.
+[Wed Feb  8 16:38:38 2023] #BUSCOV BUSCO v5 format
+[Wed Feb  8 16:38:38 2023] #BUSCO 515 ensMONDO Duplicated BUSCO genes loaded from gendata/ensMONDO.busco5.tsv
+[Wed Feb  8 16:38:38 2023] #BUSCO 491 ensMONDO Duplicated BUSCO genes following filtering to 10 sequences.
+[Wed Feb  8 16:38:39 2023] #TIDK 5 TIDK telomere windows loaded from gendata/ensMONDO.tidk.csv
+[Wed Feb  8 16:38:39 2023] #TIDK 5 TIDK telomere windows loaded from gendata/ensMONDO.tidk.csv
+[Wed Feb  8 16:38:39 2023] #FT 53120 features loaded from gendata/ensMONDO.gaps.tdt
+[Wed Feb  8 16:38:39 2023] ensPLATY...
+[Wed Feb  8 16:38:39 2023] #SEQS 27 ensPLATY sequences loaded from gendata/ensPLATY.telomeres.tdt
+[Wed Feb  8 16:38:39 2023] #SEQS 27 ensPLATY sequences meet minlen cutoff of 0 bp
+[Wed Feb  8 16:38:39 2023] #BUSCOV BUSCO v5 format
+[Wed Feb  8 16:38:39 2023] #BUSCO 7584 ensPLATY Complete BUSCO genes loaded from gendata/ensPLATY.busco5.tsv
+[Wed Feb  8 16:38:39 2023] #BUSCO 7487 ensPLATY Complete BUSCO genes following filtering to 27 sequences.
+[Wed Feb  8 16:38:39 2023] #BUSCOV BUSCO v5 format
+[Wed Feb  8 16:38:39 2023] #BUSCO 156 ensPLATY Duplicated BUSCO genes loaded from gendata/ensPLATY.busco5.tsv
+[Wed Feb  8 16:38:39 2023] #BUSCO 135 ensPLATY Duplicated BUSCO genes following filtering to 27 sequences.
+[Wed Feb  8 16:38:39 2023] #TIDK 250 TIDK telomere windows loaded from gendata/ensPLATY.tidk.csv
+[Wed Feb  8 16:38:39 2023] #FT 394 features loaded from gendata/ensPLATY.gaps.tdt
+[Wed Feb  8 16:38:39 2023] #SEQS  45 sequences loaded in total.
+[Wed Feb  8 16:38:39 2023] #BUSCO  23435 Complete BUSCO genes loaded in total.
+[Wed Feb  8 16:38:39 2023] #DUPL  904 Duplicated BUSCO genes loaded in total.
+[Wed Feb  8 16:38:39 2023] #TIDK  255 TIDK telomere windows loaded in total.
+[Wed Feb  8 16:38:39 2023] #FT  0 features loaded in total.
+[Wed Feb  8 16:38:39 2023] #GAPS  53849 assembly gaps loaded in total.
+[Wed Feb  8 16:38:39 2023] #BUSCO  23435 BUSCO genes for loaded sequences.
+[Wed Feb  8 16:38:39 2023] Generating synteny blocks...
+[Wed Feb  8 16:38:42 2023] #BLOCK Generated 5344 synteny blocks.
+[Wed Feb  8 16:38:43 2023] #BLOCK Reduced to 3652 synteny blocks based on minregion=INT filtering.
+[Wed Feb  8 16:38:44 2023] #FOCUS Focal genome for orientation: ensMONDO
+[Wed Feb  8 16:38:44 2023] #ORDER ensMONDO sequences: MONDOCHR1, MONDOCHR2, MONDOCHR3, MONDOCHR4, MONDOCHR5, MONDOCHR6, MONDOCHR7, MONDOCHR8, MONDOCHRMT, MONDOCHRX
+[Wed Feb  8 16:38:44 2023] #ORDER ensDEVIL sequences: DEVILCHR2, DEVILCHR4, DEVILCHR1, DEVILCHR3, DEVILCHR6, DEVILCHR5, DEVILCHRX, DEVILCHRY
+[Wed Feb  8 16:38:44 2023] #ORDER ensPLATY sequences: PLATYCHR3, PLATYCHR16, PLATYCHR5, PLATYCHRX1, PLATYCHR11, PLATYCHR9, PLATYCHR15, PLATYCHR4, PLATYCHR19, PLATYCHR17, PLATYCHR2, PLATYCHRX3, PLATYCHR7, PLATYCHRX2, PLATYCHR21, PLATYCHR20, PLATYCHR12, PLATYCHR18, PLATYCHRX5, PLATYCHR1, PLATYCHR14, PLATYCHRX4, PLATYCHR10, PLATYCHR13, PLATYCHR8, PLATYCHR6, PLATYCHRMT
+[Wed Feb  8 16:38:44 2023] Establish max genome size, gaps and padding
+[Wed Feb  8 16:38:44 2023] Establish xshift and yshift for each sequence
+[Wed Feb  8 16:38:45 2023] TIDK Telomeres...
+[Wed Feb  8 16:38:45 2023] Gaps and Features...
+[Wed Feb  8 16:38:45 2023] 14 potential false duplication gap(s) (mis-scaffolding) identified
+[Wed Feb  8 16:38:45 2023] #XLSX Tabs: Genomes,Sequences,BUSCO,Regions,Hits,Best,Positions,Telomeres,Features,DupGap
+[Wed Feb  8 16:38:45 2023] #SAVE All chromsyn data output to chromsyn.xlsx
+[Wed Feb  8 16:39:11 2023] #GGSAVE Saved output plot to ./chromsyn.pdf
+[Wed Feb  8 16:39:19 2023] #GGSAVE Saved output plot to ./chromsyn.png
+[1] TRUE
+[Wed Feb  8 16:39:19 2023] #RCODE ChromSyn.R finished.

@@ -14,7 +14,7 @@ If you use ChromSyn in your work, please cite the bioRxiv paper describing the M
 
 ## Dependencies
 
-You will need to have R with [tidyverse](https://www.tidyverse.org/) installed. The `writexl` package is also needed for Excel output.
+You will need to have R with [tidyverse](https://www.tidyverse.org/) installed along with the `RColorBrewer` and `gtools` packages. The `writexl` package is also needed for Excel output.
 
 ## Quick start
 
