@@ -95,18 +95,21 @@ A more detailed description of options and use cases will be added in time. The 
 # : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
 # : busco=FOFN = File of PREFIX FILE with full BUSCO table results. Used to identify orthologous regions. [busco.fofn]
 # : tidk=FOFN = Optional file of PREFIX FILE with TIDK search results. [tidk.fofn]
-# : regdata=TSV = File of Genome, HitGenome, Seqname, Start, End, Strand, Hit, HitStart, HitEnd
+# : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
+# : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
+# : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
 # : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
 # : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
-# : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, Type or Col) [Genome]
+# : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
 # : minregion=INT = minimum length for mapped regions to be included in plots [50000]
 # : minbusco=INT = minimum number of BUSCO genes to be included in Syntenic block [1]
+# : minftlen=INT = minimum number of for features to be plotted [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
 # : orphans=T/F = whether to include scaffolds that have no BUSCO genes [True]
 # : tidkcutoff=INT = TIDK count cutoff for identifying a telomere [50]
@@ -122,7 +125,7 @@ A more detailed description of options and use cases will be added in time. The 
 # : ftsize=NUM setting to control the size of telomere and feature points.
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
 # : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
-# : labels=T/F = whether to print chromosome name labels [TRUE]
+# : labels=T/F = whether to print chromosome name labels (True) or legend (False) [TRUE]
 # : opacity=NUM = Opacity of synteny regions (0-1) [0.3]
 # : debug=T/F = whether to switch on additional debugging outputs [FALSE]
 # : dev=T/F = whether to switch on dev mode during code updates [FALSE]
