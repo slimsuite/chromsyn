@@ -18,6 +18,9 @@ You will need to have R with [tidyverse](https://www.tidyverse.org/) installed a
 
 ## Quick start
 
+**NOTE:** A slightly more detailed description (and newer version of the output) is available through the 
+[ChromSyn Walkthrough](https://github.com/slimsuite/chromsyn/blob/main/Walkthrough.md). Better documentation is in development, so please ask questions if anything is unclear!
+
 The simplest way to use ChromSyn is using BUSCO predictions. Two inputs are required:
 
 * `busco.fofn` = file of file names pointing to the BUSCO `full_table.tsv` tables
