@@ -202,3 +202,9 @@ Rscript ../chromsyn.R | tee chromsyn.log
 This is not essential, but would be useful if things don't behave as expected.
 
 
+### Recommendations
+
+* Use `basefile=PREFIX` to set the names of the output files. (Particularly important for multiple runs in the same directory.)
+* Set `pdfwidth=40` or higher when there are a small number of genomes and/or a large number of chromosomes.
+* Use `restrict=LIST` to restrict analysis/plotting to specific chromosomes/scaffolds. This will match to any genome, so only use common naming across genomes where these are syntenic chromosomes. For more detail, combine with `minregion=-1` to plot each BUSCO gene separately.
+

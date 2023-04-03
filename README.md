@@ -60,6 +60,9 @@ Version 0.7.0 introduced a new optional input of assembly gaps (SeqSuite output)
 
 If the features have one of the open shapes (21-25), they will have a black border and use the `Col` value for the fill.
 
+Version 1.2.0 introduced another optional input of predicted copy number output from [DepthKopy](https://github.com/slimsuite/depthkopy), which can be used to colour Duplicated BUSCO genes and loaded features according to their predicted copy number: `cndata=TSV`. This should be a delimited file with fields: `Genome`, `SeqName`, `Start`, `End`, `CN` (Other fields OK). If `Genome` is not provided, `SeqName` will map onto any genome. `Start` and `End` will be converted into `Pos` (mean position) prior to mapping, which is used for the actual mapping. (`Pos` can be provided in place of `Start` and `End`.)
+
+
 **Step 4.** Make the FOFN files, e.g.:
 
 ```
@@ -101,10 +104,12 @@ A more detailed description of options and use cases will be added in time. The 
 # : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
 # : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
 # : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
+# : cndata=TSV = File of Genome, SeqName, Start, End, CN (Other fields OK)
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
 # : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
 # : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
+# : restrict=LIST = List of sequence names to restrict analysis to. Will match to any genome.
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
 # : basefile=FILE = Prefix for outputs [chromsyn]
@@ -149,10 +154,11 @@ Chromosome synteny analysis is performed using single-copy “Complete” genes 
 
 Settings to control this behaviour include:
 
-*	The min no. of genes needed to define a block. (1 by default)
-*	The min length for a synteny block (50kb by default).
-*	The max number of BUSCO genes that can be skipped to maintain synteny. (0 by default)
+*	`minbusco=INT`: The min no. of genes needed to define a block. (1 by default)
+*	`minregion=INT`: The min length (bp) for a synteny block (50kb by default).
+*	`maxskip=INT`: The max number of BUSCO genes that can be skipped to maintain synteny. (0 by default)
 
+**NOTE:** Setting `minregion` to less than zero will keep all BUSCO genes a separate synteny regions. This can be useful for individual chromosome plots, but could cause plotting problems if done for an entire genome.
 
 Chromosome synteny is then visualised by arranging the chromosomes for each assembly in rows and plotting the synteny blocks between adjacent assemblies. In each case, the chromosome order and orientation is set for one “focus” assembly, and the remaining assemblies arranged in order to maximise the clarity of the synteny plot, propagating out from the focal genome. For each chromosome, the “best hit” in each other assembly is established as that with the maximum total length of shared synteny blocks and an anchor point established as the mean position along the best hit chromosome of those synteny blocks. Where the majority of synteny is on the opposite strand, the chromosome is reversed and given an “R” suffix in the plot. Chromosomes are then ordered according to their best hits and, within best hits, the anchor points. Synteny blocks sharing the same orientation are plotted blue, whilst inversions are plotted in red.
 

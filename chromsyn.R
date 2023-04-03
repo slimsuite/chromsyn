@@ -1,9 +1,9 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.1.6                             ~~~~~ ###
-### LAST EDIT: 03/11/22                        ~~~~~ ###
+### VERSION: 1.2.0                             ~~~~~ ###
+### LAST EDIT: 15/03/23                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
-### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
+### CONTACT: rich.edwards@uwa.edu.au           ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
 ###       doi: 10.1101/2022.04.22.489119       ~~~~~ ###
 ########################################################
@@ -34,7 +34,9 @@
 # v1.1.4 : Fixed bug with reverse chrom not plotting Duplicated genes.
 # v1.1.5 : Fixed Duplicated BUSCO loading bug introduced by v1.1.4.
 # v1.1.6 : Fixed gap-free plotting bug introduced by v1.1.5.
-version = "v1.1.6"
+# v1.1.7 : Fixed bug with TSV input for TIDK. (Expected CSV.)
+# v1.2.0 : Added reading and parsing of CN table for mapping features onto. Added restrict=LIST.
+version = "v1.2.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -45,10 +47,12 @@ version = "v1.1.6"
 # : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
 # : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
 # : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
+# : cndata=TSV = File of Genome, SeqName, Start, End, CN (Other fields OK)
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
 # : seqsort=none/focus/auto/FILE = Optional ordering strategy for other assemblies [auto]
 # : seqorder=LIST = Optional ordering of the chromsomes for the focal assembly
+# : restrict=LIST = List of sequence names to restrict analysis to. Will match to any genome.
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
 # : basefile=FILE = Prefix for outputs [chromsyn]
@@ -69,7 +73,7 @@ version = "v1.1.6"
 # : pdfwidth=NUM = PDF width [20]
 # : pdfheight=NUM = over-ride for standard calculated PDF height [0]
 # : pdfscale=NUM = over-ride for PDF output scale [1]
-# : ftsize=NUM setting to control the size of telomere and feature points.
+# : ftsize=NUM setting to control the size of telomere and feature points. [1]
 # : namesize=NUM = scaling factor for the Genome names in PDF plots [1]
 # : labelsize=NUM = scaling factor for the chromosome names in PDF plots [1]
 # : labels=T/F = whether to print chromosome name labels (True) or legend (False) [TRUE]
@@ -104,17 +108,20 @@ version = "v1.1.6"
 # : pointsize=NUM = PNG text point size [24]
 #!# Add file checks and error messages!
 #!# Add scale bar for tick marks.
-#!# Add an option to rescale all chromosomes to a proprtion of total, rather than actual size.
 #!# Add compilation of regdata synteny blocks like BUSCO blocks. Add a second regdata minlen cutoff (regfilter=X).
 #!# Add different gap modes (+ or line)
 #!# Add depth input for coloring of chromosome scaffolds.
 #!# Add more in-flight checks for data integrity.
 # : labels=X = Sequence table field to use as labels in plots [Label -> SeqName]
 # : genlabels=FILE = Option file of Genome Label to use in plots [labels.txt]
+#!# Add restrict=LIST to restrict output to a subset of chromosomes 
+#!@ Update restrict to fill in unidrectional best hits if no restriction given for that Genome.
+#!# Add restrictmode=expand to include the hits above a % (of total) synteny to restrict? (Accounting for focus and order.)
+#!# Add a helper script to compiles a features table from common sources, such as rRNA predictions.
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
-defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="",
+defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="",cndata="",restrict="",
                 minregion=50000,align="justify",ygap=4,ypad=0.1,
                 seqorder="",orient="auto",seqsort="auto",chromfill="Genome",
                 #pngwidth=1200,pngheight=900,
@@ -158,7 +165,7 @@ if(settings$opacity > 1){
   settings$opacity <- 1
 }
 #i# list parameters
-for(cmd in c("order","seqorder")){
+for(cmd in c("order","seqorder","restrict")){
   if(sum(grep(",",settings[[cmd]],fixed=TRUE)) > 0){
     settings[[cmd]] = strsplit(settings[[cmd]],',',TRUE)[[1]]
   }else{
@@ -207,6 +214,22 @@ if(settings$writexl){
   logWrite("#XLXS Install writexl package for compiled Excel file output.")
 }
 
+### ~ Load R libraries ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+getScriptPath <- function(){
+  cmd.args <- commandArgs()
+  m <- regexpr("(?<=^--file=).+", cmd.args, perl=TRUE)
+  script.dir <- dirname(regmatches(cmd.args, m))
+  if(length(script.dir) == 0) stop("can't determine script dir: please call the script with Rscript")
+  if(length(script.dir) > 1) stop("can't determine script dir: more than one '--file' argument detected")
+  return(script.dir)
+}
+if(settings$rdir == ""){
+  settings$rdir <- getScriptPath()
+}
+sfile <- paste0(settings$rdir,"/rje_load.R")
+logWrite(sfile)
+source(sfile)
+
 ####################################### ::: FUNCTIONS ::: ############################################
 
 ##### ======================== Loading data functions ======================== #####
@@ -254,6 +277,10 @@ seqTable <- function(genome,filename,delimit="\t"){
   logWrite(paste('#SEQS',nrow(seqdb),genome,"sequences loaded from",filename))
   seqdb <- seqdb[seqdb$SeqLen >= settings$minlen,]
   logWrite(paste('#SEQS',nrow(seqdb),genome,"sequences meet minlen cutoff of",settings$minlen,"bp"))
+  if(length(settings$restrict) > 1){
+    seqdb <- seqdb[seqdb$SeqName %in% settings$restrict,]
+    logWrite(paste('#SEQS',nrow(seqdb),genome,"sequences found in filter=LIST."))
+  }
   return(seqdb)
 }
 
@@ -325,6 +352,9 @@ regTable <- function(filename,delimit="\t"){
 #i# tidkdb = tidkTable(genome,filename,delimit=",")
 tidkTable <- function(genome,filename,delimit=","){
   if(! file.exists(filename)){ return(data.frame()) }
+  if(endsWith(filename,".tsv") | endsWith(filename,".tdt")){
+    delimit <- "\t"
+  }
   tidkdb <- read.table(filename,fill=TRUE,sep=delimit,header=TRUE,row.names = NULL,quote="\"",comment.char="",stringsAsFactors=FALSE)
   colnames(tidkdb) <- c("SeqName", "SeqWin", "Tel5", "Tel3", "TelSeq")
   tidkdb$Genome <- genome
@@ -682,6 +712,7 @@ if(nrow(busdb)){
   progv <- as.integer(1:20 * (nrow(regdb)/20))
   logWrite('Generating synteny blocks...')
   noblock <- settings$maxskip + 2
+  if(settings$minregion < 0){ noblock <- 0 }
   for(i in 2:nrow(regdb)){
     j <- i - 1
     #i# Updated this to allow a number of moved genes using settings$maxskip
@@ -762,7 +793,7 @@ if(! settings$orphans){
 seqgenomes <- unique(seqdb$Genome)
 badgenomes <- gendb$Genome[! gendb$Genome %in% seqgenomes]
 if(length(badgenomes) > 0){
-  logWrite(paste('#NOSEQ',length(badgenomes),'without sequences following filters: check minregion, minbusco, minlen and orphan settings'))
+  logWrite(paste('#NOSEQ',length(badgenomes),'genomes without sequences following filters: check minregion, minbusco, minlen and orphan settings'))
   seqdb <- seqdb[seqdb$Genome %in% seqgenomes,]
   gendb <- gendb[gendb$Genome %in% seqgenomes,]
   settings$order <- settings$order[settings$order %in% seqgenomes]
@@ -1244,6 +1275,78 @@ if(sum(dupgap)>0){
   fdupdb <- ftdb[c(FALSE,dupgap,FALSE),]
 }
 
+##### ======================== Add CN Data ======================== #####
+#!# Currently won't work for pc scaling. What about RevComp? May need to move sooner! (Should be OK?)
+#i# Setup CN colour palette
+# grey, orange, lightblue, green, yellow, blue, red, pink
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+# grey, yellow, lightblue, blue, pink, red
+cbPalette <- cbPalette[c(1,5,3,6,8,7)]
+regCol <- function(cn){
+  if(cn == 0){
+    return(cbPalette[1])
+  }
+  if(cn < 0.33){
+    return(cbPalette[2])
+  }
+  if(cn < 0.75){
+    return(cbPalette[3])
+  }
+  if(cn < 1.5){
+    return(cbPalette[4])
+  }
+  if(cn < 2.5){
+    return(cbPalette[5])
+  }
+  return(cbPalette[6])
+}
+#Create a custom color scale
+cnColors <- cbPalette[c(1,5,3,6,8,7)]
+names(cnColors) <- c("0n", "<1n", "1n", "2n", "4n", "6+n")
+colScale <- scale_colour_manual(name = "RegCN",values = cnColors)
+
+#i# Add optional DepthSizer or DepthKopy CN parsing.
+cndb <- data.frame()
+# Parse fields SeqName/Contig, Start, End, CN.
+if(file.exists(settings$cndata)){
+  cndb <- loadTable(settings$cndata)
+  cndb <- cndb$data
+  if(! "SeqName" %in% colnames(cndb) & "Contig" %in% colnames(cndb)){
+    cndb <- rename(cndb,SeqName=Contig)
+  }
+}
+# Generate Pos field
+if(nrow(cndb) > 0){
+  if(! "Pos" %in% colnames(cndb)){
+    cndb$Pos <- (cndb$End + cndb$Start) / 2
+  }
+  # Set colour by CN
+  cndb$ColCN <- cbPalette[6]
+  cndb[cndb$CN < 2.5,]$ColCN <- cbPalette[5]
+  cndb[cndb$CN < 1.5,]$ColCN <- cbPalette[4]
+  cndb[cndb$CN < 0.75,]$ColCN <- cbPalette[3]
+  cndb[cndb$CN < 0.33,]$ColCN <- cbPalette[2]
+  cndb[cndb$CN == 0,]$ColCN <- cbPalette[1]
+  # Update the ftdb table by joining on Genome, SeqName and Pos.
+  # Strand and Genome are optional
+  if("Strand" %in% colnames(cndb) & "Genome" %in% colnames(cndb)){
+    ftdb <- left_join(ftdb,cndb %>% select(Genome, SeqName, Pos, Strand, CN, ColCN))
+  }
+  if("Strand" %in% colnames(cndb) & ! "Genome" %in% colnames(cndb)){
+    ftdb <- left_join(ftdb,cndb %>% select(SeqName, Pos, Strand, CN, ColCN))
+  }
+  if(! "Strand" %in% colnames(cndb) & "Genome" %in% colnames(cndb)){
+    ftdb <- left_join(ftdb,cndb %>% select(Genome, SeqName, Pos, CN, ColCN))
+  }
+  if(! "Strand" %in% colnames(cndb) & ! "Genome" %in% colnames(cndb)){
+    ftdb <- left_join(ftdb,cndb %>% select(SeqName, Pos, CN, ColCN))
+  }
+  # Update colour
+  logWrite(paste0(length(is.na(ftdb$ColCN))," features are lacking Copy Number"))
+  ftdb[! is.na(ftdb$ColCN),]$Fill <- ftdb[! is.na(ftdb$ColCN),]$ColCN
+}
+
+
 ##### ======================== Save data to Excel ======================== #####
 ### ~ Save data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 if(settings$writexl){
@@ -1326,6 +1429,9 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   if(nrow(ftdb)){
     pD <- ftdb %>% mutate(xpos=(xshift+Pos)/rescale)
     plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,fill=pD$Fill,shape=pD$Shape,size=pD$Size)
+    if("CN" %in% colnames(ftdb) & sum(! is.na(ftdb$CN)) > 0){
+      plt <- plt + colScale
+    }
   }
   # Telomeres
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
@@ -1424,7 +1530,7 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
       axis.text.y=element_blank(),
       axis.ticks.y=element_blank()
     )
-  if(settings$labels){
+  if(settings$labels){  # & ! "CN" %in% colnames(ftdb)){ #!# Need to add CN legend
     plt <- plt + theme(legend.position = "None")
   }
   return(plt)  
