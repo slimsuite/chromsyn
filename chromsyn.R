@@ -131,7 +131,7 @@ defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="
                 minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,ftsize=1,
                 pdfwidth=20,pdfheight=0,pdfscale=1,namesize=1,labelsize=1,labels=TRUE,
                 scale = "Mb",textshift = 0.3,ticks=5e7,rscript=TRUE,
-                basefile="chromsyn",focus="",debug=FALSE,dev=FALSE,
+                basefile="chromsyn",focus="",debug=FALSE,dev=FALSE,rdir="",
                 outlog=stdout())
 
 settings <- defaults
