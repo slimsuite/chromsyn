@@ -36,7 +36,7 @@ If you already have data generated, or want to run on the example data provided,
 In order to generate the full set of input files as described in this walkthrough, you will also need to have the following installed:
 
 * [BUSCO](https://busco.ezlab.org/)
-* [Diploidocus](https://github.com/slimsuite/diploidocus). (Clone the Git repo, no installation needed.)
+* [Telocirator](https://github.com/slimsuite/telociraptor). (Clone the Git repo, no installation needed.)
 * [TIDK](https://github.com/tolkit/telomeric-identifier)
 
 
@@ -70,13 +70,12 @@ In this case, this produced fasta files for three species:
 
 ### Generating sequence input
 
-ChromSyn needs a file with the sequence names and lengths. This could be a simple `name,length` CSV file, but the recommended thing is to run [Diploidocus](https://github.com/slimsuite/diploidocus) and generate telomere predictions at the same time (where `$PATH` is the Dipoidocus code path). Diploidocus can also be used to create the gaps table:
+ChromSyn needs a file with the sequence names and lengths. This could be a simple `name,length` CSV file, but the recommended thing is to run [Telociraptor](https://github.com/slimsuite/telociraptor) and generate telomere predictions and gap files at the same time (where `$PATH` is the Telociraptor code path):
 
 ```
 for GENOME in *.fasta; do
   PREFIX=$(basename ${GENOME/.fasta/})
-  python $PATH/diploidocus.py runmode=telomeres telonull seqin=$GENOME basefile=$PREFIX
-  python $PATH/diploidocus.py runmode=summarise seqin=$GENOME gapstats dna i=-1 basefile=$PREFIX 
+  python $TELOCIRAPTOR/code/telociraptor.py seqin=$GENOME basefile=$PREFIX i=-1 tweak=F telonull=T
 done
 ```
 

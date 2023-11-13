@@ -11,12 +11,13 @@
 ####################################### ::: HISTORY ::: ############################################
 # v0.1.0 : Initial version for seqrenamer.R
 # v0.2.0 : Updated for different transformation table formats.
-version = "v0.2.0"
+# v0.3.0 : Set shortname=TRUE for vector input.
+version = "v0.3.0"
 
 ####################################### ::: SUMMARY ::: ############################################
 #i# loadTable(filename,delimit="ext") - Returns TD$headers vector of headers and TD$data tibble
 #i# fastaToList(filename,seqlist=list(),shortname=TRUE) - Returns list of seqname=sequence
-#i# seqVector(filename,intvec=TRUE) - Returns list of seqname=vector
+#i# seqVector(filename,intvec=TRUE,shortname=TRUE) - Returns list of seqname=vector
 #i# filterTableSeq(D,seqnames,seqfield="SeqName",logid="#FILTER") - Returns filtered tibble/dataframe
 
 ####################################### ::: TODO ::: ############################################
@@ -127,7 +128,7 @@ fastaToList <- function(filename,seqlist=list(),shortname=TRUE){
 #i# seqvec = seqVector(filename)
 # > filename: numeric vector file
 # > intvec: whether to convert to integer
-seqVector <- function(filename,intvec=TRUE,shortname=FALSE){
+seqVector <- function(filename,intvec=TRUE,shortname=TRUE){
   seqvec = list()
   indata = readLines(filename)
   i = 1

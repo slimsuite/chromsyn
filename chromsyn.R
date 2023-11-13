@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.2.0                             ~~~~~ ###
-### LAST EDIT: 15/03/23                        ~~~~~ ###
+### VERSION: 1.2.1                             ~~~~~ ###
+### LAST EDIT: 01/08/23                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: rich.edwards@uwa.edu.au           ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -36,7 +36,8 @@
 # v1.1.6 : Fixed gap-free plotting bug introduced by v1.1.5.
 # v1.1.7 : Fixed bug with TSV input for TIDK. (Expected CSV.)
 # v1.2.0 : Added reading and parsing of CN table for mapping features onto. Added restrict=LIST.
-version = "v1.2.0"
+# v1.2.1 : Fixed some input reading bugs.
+version = "v1.2.1"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -145,7 +146,7 @@ for(cmd in argvec){
   if(length(cmdv) > 1){
     settings[[cmdv[1]]] = cmdv[2]
   }else{
-    settings[[cmdv[1]]] = TRUE    
+    settings[[cmdv[1]]] = ""    
   }
 }
 #i# integer parameters
@@ -527,13 +528,17 @@ logWrite('#RCODE Setup complete.')
 ### ~ Load sequence and BUSCO data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #i# Load file names
 seqfiles <- fileTable(settings$sequences) %>% rename(SeqFile=Filename)
-buscofiles <- fileTable(settings$busco,genomes=seqfiles$Genome) %>% rename(BUSCO=Filename)
-if(length(settings$order)<1 | (length(settings$order)==1 & settings$order[1] == "")){
-  settings$order <- seqfiles$Genome
-  logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
+gendb <- seqfiles
+if(file.exists(buscofofn)){
+  buscofiles <- fileTable(settings$busco,genomes=seqfiles$Genome) %>% rename(BUSCO=Filename)
+  if(length(settings$order)<1 | (length(settings$order)==1 & settings$order[1] == "")){
+    settings$order <- seqfiles$Genome
+    logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
+  }
+  #i# Combine into table
+  gendb <- inner_join(seqfiles,buscofiles)
+  
 }
-#i# Combine into table
-gendb <- inner_join(seqfiles,buscofiles)
 # - TIDK
 if(file.exists(settings$tidk)){
   tidkfiles <- fileTable(settings$tidk,genomes=seqfiles$Genome) %>% rename(TIDK=Filename)
@@ -591,25 +596,27 @@ for(genome in genomes){
   }else{
     seqdb <- newseqdb
   }
-  #i# BUSCO
-  filename <- gendb[genome,"BUSCO"]
-  if(nrow(busdb) > 0){
-    newbusdb <- buscoTable(genome,filename,newseqdb$SeqName)
-    if(nrow(newbusdb) > 0){
-      busdb <- bind_rows(busdb,newbusdb)
+  if("BUSCO" %in% colnames(gendb)){
+    #i# BUSCO
+    filename <- gendb[genome,"BUSCO"]
+    if(nrow(busdb) > 0){
+      newbusdb <- buscoTable(genome,filename,newseqdb$SeqName)
+      if(nrow(newbusdb) > 0){
+        busdb <- bind_rows(busdb,newbusdb)
+      }
+    }else{
+      busdb <- buscoTable(genome,filename,newseqdb$SeqName)
     }
-  }else{
-    busdb <- buscoTable(genome,filename,newseqdb$SeqName)
-  }
-  #i# BUSCO Duplicated
-  filename <- gendb[genome,"BUSCO"]
-  if(nrow(dupdb) > 0){
-    newbusdb <- buscoTable(genome,filename,newseqdb$SeqName,"Duplicated")
-    if(nrow(newbusdb) > 0){
-      dupdb <- bind_rows(dupdb,newbusdb)
+    #i# BUSCO Duplicated
+    filename <- gendb[genome,"BUSCO"]
+    if(nrow(dupdb) > 0){
+      newbusdb <- buscoTable(genome,filename,newseqdb$SeqName,"Duplicated")
+      if(nrow(newbusdb) > 0){
+        dupdb <- bind_rows(dupdb,newbusdb)
+      }
+    }else{
+      dupdb <- buscoTable(genome,filename,newseqdb$SeqName,"Duplicated")
     }
-  }else{
-    dupdb <- buscoTable(genome,filename,newseqdb$SeqName,"Duplicated")
   }
   #i# TIDK
   filename <- gendb[genome,"TIDK"]
@@ -649,13 +656,16 @@ for(genome in genomes){
   }
 }
 #i# Duplicated table update
-dupdb$Pos <- (dupdb$End + dupdb$Start) / 2
-dupdb <- select(dupdb, Genome, SeqName, Pos, Strand, BuscoID) %>% rename(Feature=BuscoID)
+if(nrow(dupdb)){
+  dupdb$Pos <- (dupdb$End + dupdb$Start) / 2
+  dupdb <- select(dupdb, Genome, SeqName, Pos, Strand, BuscoID) %>% rename(Feature=BuscoID)
+}
 if(nrow(dupdb)){
   dupdb$Col <- "black"
   dupdb$Fill <- "yellow"
   dupdb$Shape <- -1
 }
+
 #i# Summary
 logWrite(paste("#SEQS ",nrow(seqdb),"sequences loaded in total."))
 logWrite(paste("#BUSCO ",nrow(busdb),"Complete BUSCO genes loaded in total."))
@@ -663,8 +673,11 @@ logWrite(paste("#DUPL ",nrow(dupdb),"Duplicated BUSCO genes loaded in total."))
 logWrite(paste("#TIDK ",nrow(teldb),"TIDK telomere windows loaded in total."))
 logWrite(paste("#FT ",nrow(ftdb),"features loaded in total."))
 logWrite(paste("#GAPS ",nrow(gapdb),"assembly gaps loaded in total."))
+
 #i# Filter BUSCO to loaded sequences
-busdb <- filter(busdb,SeqName %in% seqdb$SeqName)
+if(nrow(busdb)){
+  busdb <- filter(busdb,SeqName %in% seqdb$SeqName)
+}
 logWrite(paste("#BUSCO ",nrow(busdb),"BUSCO genes for loaded sequences."))
 
 #i# Check for appropriate fill field:
@@ -755,9 +768,13 @@ if(settings$regdata != ""){
     filter(Length>=settings$minregion,HitLength>=settings$minregion)
   logWrite(paste('#REGION Reduced to',nrow(linkdb),"synteny blocks based on minregion=INT filtering."))
   if(nrow(linkdb)){
-    linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen))
-    linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen) %>% rename(HitGenome=Genome,Hit=SeqName,HitSeqLen=SeqLen))
+    linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen)) %>% select(-SeqLen)
+    linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen) %>% rename(HitGenome=Genome,Hit=SeqName)) %>% select(-SeqLen)
+    linkdb <- unique(linkdb) #?# Why is this needed?!
     logWrite(paste('#REGION Reduced to',nrow(linkdb),"synteny blocks after removing filtered sequences."))
+    linkdb <- linkdb %>% mutate(BuscoID=1) %>% 
+      select(Genome,HitGenome,SeqName,Start,End,Strand,Hit,HitStart,HitEnd,BuscoID,Length,HitLength) %>%
+      arrange(Genome,HitGenome,SeqName,Start,End)
   }
   if(nrow(regdb) > 0){
     if(nrow(linkdb) > 0){
@@ -786,6 +803,7 @@ if(! settings$orphans){
   fulln <- nrow(seqdb)
   buscseq <- group_by(regdb,Genome,SeqName) %>% summarise(Genome=first(Genome),SeqName=first(SeqName),N=n())
   seqdb <- inner_join(seqdb,buscseq) %>% filter(N>0) %>% select(-N)
+  seqdb <- unique(seqdb) #? Getting weird duplication issues with inner_join. Why?
   logWrite(paste("#ORPHAN Removed orphan sequences w/o synteny blocks:",fulln,"->",nrow(seqdb),"sequences."))
 }
 
