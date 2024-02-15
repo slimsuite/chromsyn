@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.2.1                             ~~~~~ ###
-### LAST EDIT: 01/08/23                        ~~~~~ ###
+### VERSION: 1.3.0                             ~~~~~ ###
+### LAST EDIT: 15/02/24                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: rich.edwards@uwa.edu.au           ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -37,7 +37,8 @@
 # v1.1.7 : Fixed bug with TSV input for TIDK. (Expected CSV.)
 # v1.2.0 : Added reading and parsing of CN table for mapping features onto. Added restrict=LIST.
 # v1.2.1 : Fixed some input reading bugs.
-version = "v1.2.1"
+# v1.3.0 : Added regmirror=T/F function to allow unidirectional regdata and fixed order bug without BUSCO.
+version = "v1.3.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -48,6 +49,7 @@ version = "v1.2.1"
 # : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
 # : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
 # : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
+# : regmirror=T/F = Whether to mirror the regdata input [False]
 # : cndata=TSV = File of Genome, SeqName, Start, End, CN (Other fields OK)
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
@@ -56,6 +58,7 @@ version = "v1.2.1"
 # : restrict=LIST = List of sequence names to restrict analysis to. Will match to any genome.
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
+# : runpath=PATH = Run ChromSyn in this path (will look for inputs etc. here) [./]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
@@ -122,7 +125,8 @@ version = "v1.2.1"
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
-defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="",cndata="",restrict="",
+defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",
+                regdata="",cndata="",restrict="",regmirror=FALSE,
                 minregion=50000,align="justify",ygap=4,ypad=0.1,
                 seqorder="",orient="auto",seqsort="auto",chromfill="Genome",
                 #pngwidth=1200,pngheight=900,
@@ -132,7 +136,8 @@ defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",regdata="
                 minbusco=1,maxskip=0,orphans=TRUE,minlen=0,opacity=0.3,ftsize=1,
                 pdfwidth=20,pdfheight=0,pdfscale=1,namesize=1,labelsize=1,labels=TRUE,
                 scale = "Mb",textshift = 0.3,ticks=5e7,rscript=TRUE,
-                basefile="chromsyn",focus="",debug=FALSE,dev=FALSE,rdir="",
+                basefile="chromsyn",focus="",debug=FALSE,dev=FALSE,
+                rdir="",runpath="",
                 outlog=stdout())
 
 settings <- defaults
@@ -174,7 +179,7 @@ for(cmd in c("order","seqorder","restrict")){
   }
 }
 #i# logical parameters
-for(cmd in c("debug","dev","orphans","labels","duplicated")){
+for(cmd in c("debug","dev","orphans","labels","duplicated","regmirror")){
   settings[[cmd]] = as.logical(settings[[cmd]])
 }
 
@@ -189,6 +194,9 @@ if(settings$debug){
 ### ~ logWrite function ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 logWrite <- function(logstr){
   writeLines(paste0("[",date(),"] ",logstr),con=settings$outlog)
+}
+if(! settings$runpath == ""){
+  setwd(settings$runpath)
 }
 logWrite(paste("#RCODE ChromSyn.R:",version))
 logWrite(paste("#PATH Running from:",getwd()))
@@ -344,6 +352,13 @@ regTable <- function(filename,delimit="\t"){
   regdb$Hit <- as.character(regdb$Hit)
   #?# Check the fields
   logWrite(paste('#REGION',nrow(regdb),"linked regions loaded from",filename))
+  #i# Mirror if appropriate
+  if(settings$regmirror){
+    mirrordb <- regdb %>% select(HitGenome, Genome, Hit, HitStart, HitEnd, Strand, SeqName, Start, End, HitLength, Length)
+    colnames(mirrordb) <- colnames(regdb)
+    regdb <- bind_rows(regdb,mirrordb)
+    logWrite(paste('#REGION',nrow(regdb),"linked regions following region mirroring (regmirror=TRUE)"))
+  }
   return(regdb)
 }
 
@@ -457,6 +472,9 @@ seqLen <- function(seqdb,genome,seqname){
 seqRev <- function(seqdb,genome,seqname){
   if(is.na(seqname)){
     logWrite(paste0('Warning: problem with missing seqname for ',genome))
+    if(! file.exists(settings$busco)){
+      logWrite(paste0('No BUSCO data. Check regdata and regmirror settings.'))
+    }
     return(FALSE)
   }
   seqrev <- seqdb %>% filter(Genome==genome,SeqName==seqname) %>% select(Rev)
@@ -531,13 +549,12 @@ seqfiles <- fileTable(settings$sequences) %>% rename(SeqFile=Filename)
 gendb <- seqfiles
 if(file.exists(buscofofn)){
   buscofiles <- fileTable(settings$busco,genomes=seqfiles$Genome) %>% rename(BUSCO=Filename)
-  if(length(settings$order)<1 | (length(settings$order)==1 & settings$order[1] == "")){
-    settings$order <- seqfiles$Genome
-    logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
-  }
   #i# Combine into table
   gendb <- inner_join(seqfiles,buscofiles)
-  
+}
+if(length(settings$order)<1 | (length(settings$order)==1 & settings$order[1] == "")){
+  settings$order <- seqfiles$Genome
+  logWrite(paste("Genomes (order=LIST):",paste(settings$order,collapse=", ")))
 }
 # - TIDK
 if(file.exists(settings$tidk)){
@@ -1280,17 +1297,19 @@ if(settings$debug){
 
 
 ##### ======================== Add Gap warnings ======================== #####
-ftdb <- arrange(ftdb,Genome,SeqName,Pos)
-#!# Find gaps between synteny blocks
-#!# Find gaps between telomere pairs
-#!@ Find telomeres between synteny blocks
-### ~ Gaps between Duplicated BUSCOs ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
-fi <- 3:nrow(ftdb)
-dupgap <- ftdb$Feature[fi] %in% dupdb$Feature & ftdb$Feature[fi-1] == "Gap" & ftdb$Feature[fi] == ftdb$Feature[fi-2]
-logWrite(paste(sum(dupgap),"potential false duplication gap(s) (mis-scaffolding) identified"))
 fdupdb <- data.frame()
-if(sum(dupgap)>0){
-  fdupdb <- ftdb[c(FALSE,dupgap,FALSE),]
+if(nrow(ftdb) > 0){
+  ftdb <- arrange(ftdb,Genome,SeqName,Pos)
+  #!# Find gaps between synteny blocks
+  #!# Find gaps between telomere pairs
+  #!@ Find telomeres between synteny blocks
+  ### ~ Gaps between Duplicated BUSCOs ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+  fi <- 3:nrow(ftdb)
+  dupgap <- ftdb$Feature[fi] %in% dupdb$Feature & ftdb$Feature[fi-1] == "Gap" & ftdb$Feature[fi] == ftdb$Feature[fi-2]
+  logWrite(paste(sum(dupgap),"potential false duplication gap(s) (mis-scaffolding) identified"))
+  if(sum(dupgap)>0){
+    fdupdb <- ftdb[c(FALSE,dupgap,FALSE),]
+  }
 }
 
 ##### ======================== Add CN Data ======================== #####
@@ -1373,7 +1392,10 @@ if(settings$writexl){
   }else{
     outfile = paste0(settings$basefile,".chromsyn.xlsx")
   }
-  xlftdb <- select(ftdb,Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape)
+  xlftdb <- ftdb
+  if(nrow(ftdb)>0){
+    xlftdb <- select(ftdb,Genome,SeqName,Pos,Strand,Feature,Col,Fill,Shape)
+  }
   X <- list(Genomes=gendb,Sequences=seqdb,BUSCO=busdb,Regions=regdb,Hits=hitdb,Best=bestdb,Positions=posdb,Telomeres=teldb,Features=xlftdb)
   if(nrow(fdupdb)){
     X$DupGap <- fdupdb    

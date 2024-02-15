@@ -4,7 +4,7 @@ ChromSyn is designed to compile a set of BUSCO runs with the same version and li
 
 ## Version
 
-The current version should be `v1.2.1`. (Check the chromsyn.R file to be sure!)
+The current version should be `v1.3.0`. (Check the chromsyn.R file to be sure!)
 
 ## Citation
 
@@ -37,7 +37,7 @@ GENOMEn FILENAMEn
 
 One easy way to generate this input:
 
-**Step 1.** Compile BUSCO results into a single directory and name them `$GENOME.busco5.tsv`.
+**Step 1.** Compile BUSCO results into a single directory and name them `$GENOME.busco5.tsv`. 
 	
 **Step 2.** Name each input `$GENOME.fasta` and filter to just the chromosomes. (Can be done before or after running BUSCO but don't change sequence names if done afterwards.)
 	
@@ -103,6 +103,7 @@ A more detailed description of options and use cases will be added in time. The 
 # : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
 # : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
 # : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
+# : regmirror=T/F = Whether to mirror the regdata input [False]
 # : cndata=TSV = File of Genome, SeqName, Start, End, CN (Other fields OK)
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
@@ -111,6 +112,7 @@ A more detailed description of options and use cases will be added in time. The 
 # : restrict=LIST = List of sequence names to restrict analysis to. Will match to any genome.
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
+# : runpath=PATH = Run ChromSyn in this path (will look for inputs etc. here) [./]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
@@ -161,4 +163,8 @@ Settings to control this behaviour include:
 
 Chromosome synteny is then visualised by arranging the chromosomes for each assembly in rows and plotting the synteny blocks between adjacent assemblies. In each case, the chromosome order and orientation is set for one “focus” assembly, and the remaining assemblies arranged in order to maximise the clarity of the synteny plot, propagating out from the focal genome. For each chromosome, the “best hit” in each other assembly is established as that with the maximum total length of shared synteny blocks and an anchor point established as the mean position along the best hit chromosome of those synteny blocks. Where the majority of synteny is on the opposite strand, the chromosome is reversed and given an “R” suffix in the plot. Chromosomes are then ordered according to their best hits and, within best hits, the anchor points. Synteny blocks sharing the same orientation are plotted blue, whilst inversions are plotted in red.
 
+## Providing Synteny Blocks
  
+It is possible to run ChromSyn without BUSCO data, using the `regdata=TSV` option. This should be a tab-delimited file with the fields: `Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd`.  (Any extra fields are ignored.) If you have already run ChromSyn, it’s the same format as the “Regions” sheet in the `*.chromsyn.xlsx` output file, without the last three fields.
+
+**NOTE:** This file should be *unidirectional*, i.e. `Genome`:`HitGenome` hits will not be seen as `HitGenome:Genome` hits. (This is do with the way that ChromSyn establishes the ordering of sequences.) If you have *bidirectional* data, you can set `regmirror=TRUE` to fill in the blanks.

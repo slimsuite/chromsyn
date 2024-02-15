@@ -170,6 +170,9 @@ ensPLATY gendata/ensPLATY.busco5.tsv
 
 If running from another directory, replace `gendata` with the appropriate relative or absolute path. (See, for example, the `*.fofn` files in the `testrun/` directory.)
 
+**NOTE:** It is possible to run ChromSyn without BUSCO data, using the `regdata=TSV` option. This should be a tab-delimited file with the fields: `Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd`.  (Any extra fields are ignored.) If you have already run ChromSyn, it’s the same format as the “Regions” sheet in the `*.chromsyn.xlsx` output file, without the last three fields. This file should be *unidirectional*, i.e. `Genome`:`HitGenome` hits will not be seen as `HitGenome:Genome` hits. (This is do with the way that ChromSyn establishes the ordering of sequences.) If you have *bidirectional* data, you can set `regmirror=TRUE` to fill in the blanks.
+
+
 ### Running with default settings
 
 ChromSyn is now ready to run. To try out on the example data with defaults, enter the `testrun` data and run the R script:
