@@ -1,26 +1,32 @@
 ########################################################
 ### RJE_LOAD: Data loading R functions         ~~~~~ ###
-### VERSION: 0.2.0                             ~~~~~ ###
-### LAST EDIT: 08/04/22                        ~~~~~ ###
+### VERSION: 0.5.0                             ~~~~~ ###
+### LAST EDIT: 13/03/24                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ########################################################
 
-# This script is for mapping/updating sequence identifiers
+# This script is for loading different common data table types and manipulating data.
 
 ####################################### ::: HISTORY ::: ############################################
 # v0.1.0 : Initial version for seqrenamer.R
 # v0.2.0 : Updated for different transformation table formats.
 # v0.3.0 : Set shortname=TRUE for vector input.
-version = "v0.3.0"
+# v0.4.0 : Added saveTable() function.
+# v0.5.0 : Added functions for cross-referencing genomic features with regions.
+version = "v0.5.0"
 
 ####################################### ::: SUMMARY ::: ############################################
 #i# loadTable(filename,delimit="ext") - Returns TD$headers vector of headers and TD$data tibble
 #i# fastaToList(filename,seqlist=list(),shortname=TRUE) - Returns list of seqname=sequence
 #i# seqVector(filename,intvec=TRUE,shortname=TRUE) - Returns list of seqname=vector
 #i# filterTableSeq(D,seqnames,seqfield="SeqName",logid="#FILTER") - Returns filtered tibble/dataframe
+#i# saveTable(D,suffix,desc) - Generic saving of data frame to TSV file.
 
 ####################################### ::: TODO ::: ############################################
+
+
+################################# ::: LOAD FUNCTIONS ::: ############################################
 
 ### R code for loading data into tables.
 
@@ -153,6 +159,7 @@ seqVector <- function(filename,intvec=TRUE,shortname=TRUE){
   return(seqvec)  
 }
 
+################################# ::: TABLE FILTERING ::: ############################################
 
 ### ~ Filter table to subset of sequences ~ ###
 filterTableSeq <- function(D,seqnames,seqfield="SeqName",logid="#FILTER"){
@@ -165,3 +172,95 @@ filterTableSeq <- function(D,seqnames,seqfield="SeqName",logid="#FILTER"){
 }
 
 
+################################# ::: SAVE FUNCTIONS ::: ############################################
+
+### ~ Generic table saving function ~ ###
+saveTable <- function(df,suffix,desc){
+  if(nrow(df)>0){
+    outfile = paste(settings$basefile,suffix,"tsv",sep=".",collapse=".")
+    logWrite(paste("#SAVE",nrow(df),desc,"output to",outfile))
+    write.table(df,outfile,sep="\t",quote=FALSE,row.names=FALSE)
+  }
+}
+
+
+################################# ::: FEATURE FUNCTIONS ::: ############################################
+
+### ~~~~~~~~~~ Generic function for returning features spanning regions ~~~~~~~~~~~~~~~~~~~ ###
+#i# > regD = Region tibble with SeqName, Start, End[, Strand]
+#i# > ftD = Feature tibble with SeqName, Start, End[, Strand] -> Becomes ftStart, ftEnd, ftStrand
+#i# > stranded=FALSE (TRUE/FALSE) : whether to restrict overlaps to matching strands. Strand "." will match either.
+#i# > overlap=any (any/span/whole/exact) : whether to include any form of overlap, only ftD entries that span regD, ftD entries within a regD region, or exact matches only
+#i# > flank=0 [int] : additional flank to add to each end of region to meet criteria. Negative flank will shrink region and thus require a buffer
+#i# > maxsize=100 [float] : Maximum predicted intermediate object size (MB) to try quick/simple regFeatures.
+#i# < spanD = Joined tibble where feature overlap conditions are met. 
+#i# NOTE: Will contain all fields from regD and ftD. These should be unique else will be used for join in addition to SeqName.
+#i# NOTE: The simple version uses a many-to-many join and will call regFeatures() if the predicted combo exceeds the maxsize setting (MB)
+regFeaturesSimple <- function(regD,ftD,stranded=FALSE,overlap="any",flank=0){
+  #i# Join by SeqName
+  jD <- full_join(regD, ftD, relationship = "many-to-many")
+  #i# Stranded
+  if(stranded){
+    jD <- jD %>% filter(! Strand=="+" & ftStrand == "-", ! Strand=="-" & ftStrand == "+")
+  }
+  #i# Flank adjust
+  if(flank != 0){
+    jD <- jD %>% mutate(Start=Start-!!flank, End=End+!!flank)
+  }
+  #i# Filter based on matches
+  filtered <- FALSE
+  if(overlap == "any"){
+    filtered <- TRUE
+    jD <- jD %>% filter(ftEnd>=Start,ftStart<=End)
+  }
+  if(overlap == "exact"){
+    filtered <- TRUE
+    jD <- jD %>% filter(ftEnd==Start,ftStart==End)
+  }
+  if(overlap == "span"){
+    filtered <- TRUE
+    jD <- jD %>% filter(ftEnd>=End,ftStart<=Start)
+  }
+  if(overlap == "whole"){
+    filtered <- TRUE
+    jD <- jD %>% filter(ftEnd<=End,ftStart>=Start)
+  }
+  if(! filtered){
+    logWrite(paste("Did not recognise regFeatures overlap =",overlap))
+    jD <- jD %>% mutate(Tmp=Start) %>% filter(Start > Tmp) %>% select(-Tmp)
+  }  
+  #i# Reverse flank adjust
+  if(flank != 0){
+    jD <- jD %>% mutate(Start=Start+!!flank, End=End-!!flank)
+  }
+  logWrite(paste(nrow(jD),"features with",overlap,"matches to regions."))
+  return(jD)
+}
+
+#i# Full version will incorporate a slower option that does not include a full_join
+regFeatures <- function(regD,ftD,stranded=FALSE,overlap="any",flank=0,maxsize=100){
+  #i# Setup tibbles
+  if(! "Strand" %in% rownames(regD)){ regD$Strand <- "." }
+  if(! "Strand" %in% rownames(ftD)){ ftD$Strand <- "." }
+  ftD <- ftD %>% rename(ftStart=Start, ftEnd=End, ftStrand=Strand)
+  #i# Check size and try simple version
+  jrows <- nrow(full_join(regD %>% select(SeqName), ftD %>% select(SeqName), relationship="many-to-many"))
+  jsize <- ((object.size(regD) / nrow(regD)) + (object.size(ftD) / nrow(ftD))) * jrows / 1e6
+  if(jsize <= maxsize){ return(regFeaturesSimple(regD,ftD,stranded,overlap,flank)) }
+  else{
+    logWrite(paste("Predicted", round(jsize,2), "MB Region-Feature tibble join"))
+  }
+  #!# Add more complex code. Do it by SeqName?
+  seqnames <- unique(regD$SeqName)
+  seqnames <- seqnames[seqnames %in% unique(ftD$SeqName)]
+  jD <- tibble()
+  for(i in 1:length(seqnames)){
+    sD <- regFeaturesSimple(regD %>% filter(SeqName == !!seqnames[i]),ftD %>% filter(SeqName == !!seqnames[i]),stranded,overlap,flank)
+    if(i < 2){
+      jD <- sD
+    }else{
+      jD <- bind_rows(jD,sD)
+    }
+  }
+  return(jD)
+}

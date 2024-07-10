@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.3.0                             ~~~~~ ###
-### LAST EDIT: 15/02/24                        ~~~~~ ###
+### VERSION: 1.3.1                             ~~~~~ ###
+### LAST EDIT: 09/07/24                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: rich.edwards@uwa.edu.au           ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -38,7 +38,8 @@
 # v1.2.0 : Added reading and parsing of CN table for mapping features onto. Added restrict=LIST.
 # v1.2.1 : Fixed some input reading bugs.
 # v1.3.0 : Added regmirror=T/F function to allow unidirectional regdata and fixed order bug without BUSCO.
-version = "v1.3.0"
+# v1.3.1 : Added BuscoIDList output to Regions sheet of Excel output. Fixed bug with orient=none.
+version = "v1.3.1"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -107,9 +108,6 @@ version = "v1.3.0"
 #!# Test settings for pdfwidth and pdfheight over-ride.
 #!# Need to test no loading of BUSCO data if regdata=TSV is given.
 #!# Add output of synteny block table.
-#!# Get bitmap output working. (Resolution is awful for unknown reasons so disabled)
-# : pngscale=INT = PDF to PNG scaling [100]
-# : pointsize=NUM = PNG text point size [24]
 #!# Add file checks and error messages!
 #!# Add scale bar for tick marks.
 #!# Add compilation of regdata synteny blocks like BUSCO blocks. Add a second regdata minlen cutoff (regfilter=X).
@@ -118,10 +116,11 @@ version = "v1.3.0"
 #!# Add more in-flight checks for data integrity.
 # : labels=X = Sequence table field to use as labels in plots [Label -> SeqName]
 # : genlabels=FILE = Option file of Genome Label to use in plots [labels.txt]
-#!# Add restrict=LIST to restrict output to a subset of chromosomes 
-#!@ Update restrict to fill in unidrectional best hits if no restriction given for that Genome.
+#!# Update restrict to fill in unidrectional best hits if no restriction given for that Genome.
 #!# Add restrictmode=expand to include the hits above a % (of total) synteny to restrict? (Accounting for focus and order.)
 #!# Add a helper script to compiles a features table from common sources, such as rRNA predictions.
+#!# Add output of the BUSCO IDs within each synteny block .
+#!# Add centromeres=FOFN input and special plotting. 
 
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
@@ -768,7 +767,7 @@ if(nrow(busdb)){
   #i# - compress by block
   backdb <- regdb
   regdb <- backdb %>% group_by(Block) %>% 
-    summarise(Genome=first(Genome),HitGenome=first(HitGenome),SeqName=first(SeqName),Start=min(Start),End=max(End),Strand=first(Strand),Hit=first(Hit),HitStart=min(HitStart),HitEnd=max(HitEnd),BuscoID=n()) %>% 
+    summarise(Genome=first(Genome),HitGenome=first(HitGenome),SeqName=first(SeqName),Start=min(Start),End=max(End),Strand=first(Strand),Hit=first(Hit),HitStart=min(HitStart),HitEnd=max(HitEnd),BuscoID=n(),BuscoIDList=toString(BuscoID)) %>% 
     select(-Block) %>%
     mutate(Length=End-Start+1,HitLength=HitEnd-HitStart+1) %>%
     filter(Length>=settings$minregion,HitLength>=settings$minregion)
@@ -789,8 +788,8 @@ if(settings$regdata != ""){
     linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen) %>% rename(HitGenome=Genome,Hit=SeqName)) %>% select(-SeqLen)
     linkdb <- unique(linkdb) #?# Why is this needed?!
     logWrite(paste('#REGION Reduced to',nrow(linkdb),"synteny blocks after removing filtered sequences."))
-    linkdb <- linkdb %>% mutate(BuscoID=1) %>% 
-      select(Genome,HitGenome,SeqName,Start,End,Strand,Hit,HitStart,HitEnd,BuscoID,Length,HitLength) %>%
+    linkdb <- linkdb %>% mutate(BuscoID=1,BuscoIDList="-") %>% 
+      select(Genome,HitGenome,SeqName,Start,End,Strand,Hit,HitStart,HitEnd,BuscoID,Length,HitLength,BuscoIDList) %>%
       arrange(Genome,HitGenome,SeqName,Start,End)
   }
   if(nrow(regdb) > 0){
@@ -878,7 +877,9 @@ logWrite(paste('#FOCUS Focal genome for orientation:',settings$focus))
 
 ### ~ Clean up objects ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 #rm(backdb)
-rm(buscopy)
+if("buscopy" %in% ls()){
+  rm(buscopy)
+}
 
 ##### ======================== Orient data ======================== #####
 #i# This next section will order orient the sequences from each genome relative to the focus.
@@ -974,6 +975,8 @@ for(i in 1:nrow(seqdb)){
     seqdb$text[i] <- paste0(seqdb$text[i],"R")
   }
 }
+revn <- sum(seqdb$Rev)
+logWrite(paste('#REVSEQ',revn,"scaffolds flipped and R suffixes added."))
 
 ### ~ Establish ordering of sequences based on focus ~~~~~~~~~~~~~~~~~~~ ###
 #!# Will want to add settings$seqsort=FILE to over-ride individual genome ordering
@@ -1014,6 +1017,9 @@ if(settings$seqsort == "auto"){
   while(length(seqorder) < length(settings$order)){
     for(genome in settings$order[!settings$order %in% names(seqorder)]){
       myfocus <- genfocus[[genome]]
+      if(myfocus == genome){
+        seqorder[[genome]] <- seqdb[seqdb$Genome==genome,]$SeqName
+      }
       if(! myfocus %in% names(seqorder)){
         next
       }
@@ -1037,7 +1043,7 @@ for(genome in names(seqorder)){
   seqnames <- unique(seqdb[seqdb$Genome == genome,]$SeqName)
   badseq <- seqorder[[genome]][! seqorder[[genome]] %in% seqnames]
   if(length(badseq)>0){
-    #?# Why is "" sometimes in the query genome order?!
+    #?# Why is "" sometimes in the query genome order?! - Because settings$seqorder == ""
     if(length(badseq)>1 | badseq[1] != ""){ 
       logWrite(paste("Some ordered",genome,"sequences missing. Removed as orphans?:",paste(badseq,collapse=", ")))
     }
