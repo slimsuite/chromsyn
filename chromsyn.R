@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.3.1                             ~~~~~ ###
-### LAST EDIT: 09/07/24                        ~~~~~ ###
+### VERSION: 1.3.2                             ~~~~~ ###
+### LAST EDIT: 02/08/24                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: rich.edwards@uwa.edu.au           ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -39,7 +39,8 @@
 # v1.2.1 : Fixed some input reading bugs.
 # v1.3.0 : Added regmirror=T/F function to allow unidirectional regdata and fixed order bug without BUSCO.
 # v1.3.1 : Added BuscoIDList output to Regions sheet of Excel output. Fixed bug with orient=none.
-version = "v1.3.1"
+# v1.3.2 : Fixed bug with scale=pc mode.
+version = "v1.3.2"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -1188,7 +1189,7 @@ if(nrow(teldb)){
 }
 if(nrow(teldb)){
   if(settings$scale == "pc"){
-    teldb$RevPos <- teldb$SeqLen - teldb$Pos + (1 / teldb$GenLen)
+    teldb$RevPos <- teldb$SeqLen - teldb$Pos #+ (1 / teldb$GenLen)
   }else{
     teldb$RevPos <- teldb$SeqLen - teldb$Pos + 1
   }
@@ -1254,9 +1255,13 @@ if(nrow(ftdb)){
 }
 
 #i# Reverse the features where required
+logWrite("Reverse Features where required...")
+if(settings$debug){
+  print(head(ftdb))
+}
 if(nrow(ftdb)){
   if(settings$scale == "pc"){
-    ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + (1 / ftdb$GenLen)
+    ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos #+ (1 / ftdb$GenLen)
   }else{
     ftdb$RevPos <- ftdb$SeqLen - ftdb$Pos + 1
   }
