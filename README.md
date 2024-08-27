@@ -60,6 +60,7 @@ If the features have one of the open shapes (21-25), they will have a black bord
 
 Version 1.2.0 introduced another optional input of predicted copy number output from [DepthKopy](https://github.com/slimsuite/depthkopy), which can be used to colour Duplicated BUSCO genes and loaded features according to their predicted copy number: `cndata=TSV`. This should be a delimited file with fields: `Genome`, `SeqName`, `Start`, `End`, `CN` (Other fields OK). If `Genome` is not provided, `SeqName` will map onto any genome. `Start` and `End` will be converted into `Pos` (mean position) prior to mapping, which is used for the actual mapping. (`Pos` can be provided in place of `Start` and `End`.)
 
+Version 1.5.0 has updated the options for using non-BUSCO synteny data. Specifically, ChromSyn has been optimised to use output from [SynBad](https://github.com/slimsuite/synbad), including custom formatting of assembly gaps based on their synteny and/or spanning read support. "Good" gaps can be optionally hidden with `qcmode=T`. If using for assembly QC, a new `ybleed` setting can be used to extend synteny blocks into chromosomes. This works best for a single pair of assemblies with `ybleed=1`, but if you want a clearer sense of how synteny blocks line up, `ybleed=0.5` will extend them to the midline of each chromosome.
 
 **Step 4.** Make the FOFN files, e.g.:
 
@@ -78,6 +79,9 @@ done
 ```
 Rscript $PATH/chromsyn.R basefile=$OUTPUTPREFIX | tee $OUTPREFIX.runlog
 ```
+
+Version 1.5.0 introduced a dynamic setting of the `minregion` length setting (default 50 kb) to avoid breaking the plotting function with thousands of tiny synteny blocks. Setting `maxregions=INT` will set the maximum number of independent regions after merging of adjacent synteny blocks. (Set `maxskip=-1` to keep all synteny blocks separate.)
+
 
 **Step 7.** Open up `$OUTPREFIX.pdf` to see the plot.
 
@@ -112,11 +116,14 @@ A more detailed description of options and use cases will be added in time. The 
 # : restrict=LIST = List of sequence names to restrict analysis to. Will match to any genome.
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
+# : qcmode=T/F = QC mode that will hide gaps rated as "good" by SynBad [False]
+# : synbad=FILE = File of custom shapes and colours for SynBad gap ratings []
 # : runpath=PATH = Run ChromSyn in this path (will look for inputs etc. here) [./]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
 # : minregion=INT = minimum length for mapped regions to be included in plots [50000]
+# : maxregions=INT = maximum number of mapped regions to be included in plots [0]
 # : minbusco=INT = minimum number of BUSCO genes to be included in Syntenic block [1]
 # : minftlen=INT = minimum number of for features to be plotted [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
@@ -125,6 +132,7 @@ A more detailed description of options and use cases will be added in time. The 
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
 # : ypad=NUM = proportion of ygap to extend synteny blocks before linking [0.1]
+# : ybleed=NUM = proportion of chromosome to bleed synteny block plotting into [0]
 # : scale=X = units in basepairs for setting the x-axis scale (bp/kb/Mb/Gb/pc) [Mb]
 # : textshift=NUM = offset for printing chromosome names [0.3]
 # : ticks=INT = distance between tickmarks [5e7]
@@ -167,4 +175,4 @@ Chromosome synteny is then visualised by arranging the chromosomes for each asse
  
 It is possible to run ChromSyn without BUSCO data, using the `regdata=TSV` option. This should be a tab-delimited file with the fields: `Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd`.  (Any extra fields are ignored.) If you have already run ChromSyn, it’s the same format as the “Regions” sheet in the `*.chromsyn.xlsx` output file, without the last three fields.
 
-**NOTE:** This file should be *unidirectional*, i.e. `Genome`:`HitGenome` hits will not be seen as `HitGenome:Genome` hits. (This is do with the way that ChromSyn establishes the ordering of sequences.) If you have *bidirectional* data, you can set `regmirror=TRUE` to fill in the blanks.
+**NOTE:** This file should be *unidirectional*, i.e. `Genome`:`HitGenome` hits will not be seen as `HitGenome:Genome` hits. (This is do with the way that ChromSyn establishes the ordering of sequences.) By default (as of `v1.5.0`), `regmirror=TRUE`, which will reciprocate all hits and remove redundancy to fill in the blanks. 
