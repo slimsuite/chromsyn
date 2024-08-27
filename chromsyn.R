@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.3.2                             ~~~~~ ###
-### LAST EDIT: 02/08/24                        ~~~~~ ###
+### VERSION: 1.5.0                             ~~~~~ ###
+### LAST EDIT: 22/08/24                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: rich.edwards@uwa.edu.au           ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -40,7 +40,9 @@
 # v1.3.0 : Added regmirror=T/F function to allow unidirectional regdata and fixed order bug without BUSCO.
 # v1.3.1 : Added BuscoIDList output to Regions sheet of Excel output. Fixed bug with orient=none.
 # v1.3.2 : Fixed bug with scale=pc mode.
-version = "v1.3.2"
+# v1.4.0 : Added plotting of repeats with a -2 shape as inverted triangles near centre. Fixed minor list argument parsing bug.
+# v1.5.0 : Added more complex plotting of gaps based on SynBad ratings and qcmode=T/F. Added maxregions=INT setting and regdata collapse to dynamically sets the min region length.
+version = "v1.5.0"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -51,7 +53,7 @@ version = "v1.3.2"
 # : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
 # : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
 # : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
-# : regmirror=T/F = Whether to mirror the regdata input [False]
+# : regmirror=T/F = Whether to mirror and collapse the regdata input [True]
 # : cndata=TSV = File of Genome, SeqName, Start, End, CN (Other fields OK)
 # : focus=X = If given will orient all chromosomes to this assembly
 # : orient=X = Mode for sequence orientation (none/focus/auto)
@@ -60,19 +62,23 @@ version = "v1.3.2"
 # : restrict=LIST = List of sequence names to restrict analysis to. Will match to any genome.
 # : order=LIST = File containing the Prefixes to include in vertical order. If missing will use sequences=FOFN.
 # : chromfill=X = Sequences table field to use for setting the colouring of chromosomes (e.g. Genome, SeqName, Type or Col) [Genome]
+# : qcmode=T/F = QC mode that will hide gaps rated as "good" by SynBad [False]
+# : synbad=FILE = File of custom shapes and colours for SynBad gap ratings []
 # : runpath=PATH = Run ChromSyn in this path (will look for inputs etc. here) [./]
 # : basefile=FILE = Prefix for outputs [chromsyn]
 # : plotdir=PATH = output path for graphics
 # : minlen=INT = minimum length for a chromosome/scaffold to be included in synteny blocks/plots [0]
 # : minregion=INT = minimum length for mapped regions to be included in plots [50000]
+# : maxregions=INT = maximum number of mapped regions to be included in plots [0]
 # : minbusco=INT = minimum number of BUSCO genes to be included in Syntenic block [1]
-# : minftlen=INT = minimum number of for features to be plotted [1]
+# : minftlen=INT = minimum length of feature to be plotted [1]
 # : maxskip=0 = maximum number of BUSCO genes to skip and still be a syntenic block [0]
 # : orphans=T/F = whether to include scaffolds that have no BUSCO genes [True]
 # : tidkcutoff=INT = TIDK count cutoff for identifying a telomere [50]
 # : align=X = alignment strategy for plotting chromosomes (left/right/centre/justify) [justify]
 # : ygap=INT = vertical gap between chromosomes [4]
 # : ypad=NUM = proportion of ygap to extend synteny blocks before linking [0.1]
+# : ybleed=NUM = proportion of chromosome to bleed synteny block plotting into [0]
 # : scale=X = units in basepairs for setting the x-axis scale (bp/kb/Mb/Gb/pc) [Mb]
 # : textshift=NUM = offset for printing chromosome names [0.3]
 # : ticks=INT = distance between tickmarks [5e7]
@@ -117,7 +123,8 @@ version = "v1.3.2"
 #!# Add more in-flight checks for data integrity.
 # : labels=X = Sequence table field to use as labels in plots [Label -> SeqName]
 # : genlabels=FILE = Option file of Genome Label to use in plots [labels.txt]
-#!# Update restrict to fill in unidrectional best hits if no restriction given for that Genome.
+#?# Update restrict to fill in unidrectional best hits if no restriction given for that Genome.
+#!# Add bestlists ouput that will generate a text file with the best hits in other genomes for each sequence. (For future restrict)
 #!# Add restrictmode=expand to include the hits above a % (of total) synteny to restrict? (Accounting for focus and order.)
 #!# Add a helper script to compiles a features table from common sources, such as rRNA predictions.
 #!# Add output of the BUSCO IDs within each synteny block .
@@ -126,9 +133,10 @@ version = "v1.3.2"
 ####################################### ::: SETUP ::: ############################################
 ### ~ Commandline arguments ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
 defaults = list(busco="busco.fofn",sequences="sequences.fofn",order="",
-                regdata="",cndata="",restrict="",regmirror=FALSE,
-                minregion=50000,align="justify",ygap=4,ypad=0.1,
-                seqorder="",orient="auto",seqsort="auto",chromfill="Genome",
+                regdata="",cndata="",restrict="",regmirror=TRUE,
+                minregion=50000,maxregions=0,
+                align="justify",ygap=4,ypad=0.1,ybleed=0.0,synbad="",
+                seqorder="",orient="auto",seqsort="auto",chromfill="Genome",qcmode=FALSE,
                 #pngwidth=1200,pngheight=900,
                 #pointsize=24,pngscale=100,
                 plotdir="./",duplicated=TRUE,minftlen=1,
@@ -155,11 +163,11 @@ for(cmd in argvec){
   }
 }
 #i# integer parameters
-for(cmd in c("pngwidth","pngheight","pointsize","minregion","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff","minftlen")){
+for(cmd in c("pngwidth","pngheight","pointsize","minregion","maxregions","ygap","minbusco","maxskip","minlen","pngscale","tidkcutoff","minftlen")){
   settings[[cmd]] = as.integer(settings[[cmd]])
 }
 #i# other numeric parameter
-for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity","ypad","ftsize")){
+for(cmd in c("textshift","ticks","pdfwidth","pdfheight","pdfscale","namesize","labelsize","opacity","ypad","ybleed","ftsize")){
   settings[[cmd]] = as.numeric(settings[[cmd]])
 }
 #i# adjust parameters where needed
@@ -175,11 +183,11 @@ for(cmd in c("order","seqorder","restrict")){
   if(sum(grep(",",settings[[cmd]],fixed=TRUE)) > 0){
     settings[[cmd]] = strsplit(settings[[cmd]],',',TRUE)[[1]]
   }else{
-    settings[[cmd]] <- defaults[[cmd]]
+    settings[[cmd]] <- settings[[cmd]]
   }
 }
 #i# logical parameters
-for(cmd in c("debug","dev","orphans","labels","duplicated","regmirror")){
+for(cmd in c("debug","dev","orphans","labels","duplicated","regmirror","qcmode")){
   settings[[cmd]] = as.logical(settings[[cmd]])
 }
 
@@ -356,8 +364,47 @@ regTable <- function(filename,delimit="\t"){
   if(settings$regmirror){
     mirrordb <- regdb %>% select(HitGenome, Genome, Hit, HitStart, HitEnd, Strand, SeqName, Start, End, HitLength, Length)
     colnames(mirrordb) <- colnames(regdb)
-    regdb <- bind_rows(regdb,mirrordb)
-    logWrite(paste('#REGION',nrow(regdb),"linked regions following region mirroring (regmirror=TRUE)"))
+    regdb <- unique(bind_rows(regdb,mirrordb)) %>% filter(Genome != HitGenome)
+    logWrite(paste('#REGION',nrow(regdb),"unique linked regions following region mirroring (regmirror=TRUE)"))
+    # Collapse adjacent synteny regions
+    regdb <- arrange(regdb, Genome,HitGenome,SeqName,Start,End)
+    #i# Add counter for each Genome (no need to restart numbering)
+    regdb$Counter <- 1:nrow(regdb)
+    regdb <- arrange(regdb,Genome,HitGenome,Hit,HitStart,HitEnd)
+    regdb$HitCounter <- 1:nrow(regdb)
+    regdb <- arrange(regdb,Genome,HitGenome,SeqName,Start,End)
+    #i# - Add synteny block ID
+    regdb$Block <- 1
+    #i# - compress by block
+    progv <- as.integer(1:20 * (nrow(regdb)/20))
+    logWrite(paste('Generating synteny blocks, skipping upto (maxskip =)',settings$maxskip,'regions...'))
+    noblock <- settings$maxskip + 2
+    if(settings$minregion < 0){ noblock <- 0 }
+    for(i in 2:nrow(regdb)){
+      j <- i - 1
+      block <- abs(regdb$Counter[i] - regdb$Counter[j]) < noblock & abs(regdb$HitCounter[i] - regdb$HitCounter[j]) < noblock
+      if(block){
+        for(field in c("Genome","SeqName","HitGenome","Hit","Strand"))
+          if(regdb[i,field] != regdb[j,field]){
+            block <- FALSE
+          }
+      }
+      if(block){
+        regdb$Block[i] <- regdb$Block[j]
+      }else{
+        regdb$Block[i] <- regdb$Block[j] + 1
+      }
+      if(i %in% progv){
+        cat(paste0("...",which(progv == i)*5,"%"), file = stderr())
+      }
+    }
+    cat("\n", file = stderr())
+    logWrite(paste('#BLOCK Generated',max(regdb$Block),"synteny blocks."))
+    #i# - compress by block
+    regdb <- regdb %>% group_by(Block) %>% 
+      summarise(Genome=first(Genome),HitGenome=first(HitGenome),SeqName=first(SeqName),Start=min(Start),End=max(End),Strand=first(Strand),Hit=first(Hit),HitStart=min(HitStart),HitEnd=max(HitEnd),BuscoID=n(),BuscoIDList=toString(BuscoID)) %>% 
+      select(-Block) %>%
+      mutate(Length=End-Start+1,HitLength=HitEnd-HitStart+1)
   }
   return(regdb)
 }
@@ -395,6 +442,34 @@ tidkTable <- function(genome,filename,delimit=","){
 }
 
 ### ~ Load Feature/Gap File ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ###
+#i# Set and load SynBad gap rating colours
+#!# To be added
+goodgap <- c("Syn","Aln","Span","Ins","Long","Div",'HiC','DupHiC')
+gapcol <- rep("blue",length(goodgap))
+gapshape <- rep(3,length(goodgap))
+neutralgap <- c("Null","Term")
+gapcol <- c(gapcol, rep("black",length(neutralgap)))
+gapshape <- c(gapshape, rep(3,length(neutralgap)))
+qcgap <- c("Dup","Inv","InvFix","InvDupFix","Brk","Tran","Frag","InvBrk")
+gapcol <- c(gapcol, c("red","darkred","darkred","red","red","red","red","red"))
+gapshape <- c(gapshape, c(3,4,13,13,3,3,3,3))
+synbaddb <- tibble(SynBad=c(goodgap, neutralgap, qcgap),
+                   Col=gapcol,Shape=gapshape)
+if(settings$dev){
+  #i# Going to trial adding a second row for the inverted triangles. Will both be plotted?
+  qcadd <- tibble(SynBad=c("Inv","InvFix","InvDupFix","Brk","Tran"),
+                  Col=c("darkred","darkred","darkred","red","red"),
+                  Shape=c(-2,-2,-2,-2,-2))
+  synbaddb <- bind_rows(synbaddb,qcadd)
+}
+if(file.exists(settings$synbad)){
+  tmpdb <- loadTable(settings$synbad) %>% select(SynBad,Col,Shape)
+  if(ncol(tmpdb) == 3){
+    synbaddb <- tmpdb
+    logWrite(paste("#SYNBAD Loading SynBad colour scheme from",settings$synbad))
+  }
+}
+
 #i# Load delimited file into feature or gaps (Genome, Seqname, Pos, Strand, Col, Shape)
 #i# ftdb = ftTable(genome,filename,delimit=",")
 ftTable <- function(genome,filename,colour="white",shape=22){
@@ -434,6 +509,46 @@ ftTable <- function(genome,filename,colour="white",shape=22){
       ftdb[ftdb$Strand == oddstrand,]$Strand <- "."
     }
   }
+  # Special SynBad Gap colouration
+  #i# When loading from the SynBad table, a colour of NA or shape of 0 will be filtered
+  if(! "Col" %in% colnames(ftdb) & "SynBad" %in% colnames(ftdb) & nrow(synbaddb) > 0){
+    # Special SynBad Gap colouration
+    ftdb <- left_join(ftdb,synbaddb) %>% 
+      mutate(Col=if_else(is.na(Col),"NA",Col)) %>%
+      filter(Col != "NA", Shape != 0)
+    # Add the inverted triangles
+    strandme <- ftdb %>% filter(Shape == -2)
+    if(nrow(strandme) > 0){
+      ftdb <- bind_rows(ftdb %>% filter(Shape != -2),strandme %>% mutate(Strand="+"),strandme %>% mutate(Strand="-"))
+    }
+  }
+  if(! "Col" %in% colnames(ftdb) & "SynBad" %in% colnames(ftdb)){
+    ftdb <- ftdb %>%
+      mutate(Col="darkred", Shape=3) %>%
+    #i# Syn, Aln and Span are good (blue +)
+    #i# Ins, Long, Div, also good (blue +)
+      mutate(Col=if_else(SynBad %in% c("Syn","Aln","Span","Ins","Long","Div"),"blue",Col)) %>%
+    #i# Null and Term are neutral (black +)
+      mutate(Col=if_else(SynBad %in% c("Null","Term"),"black",Col)) %>%
+    #i# Dupl is OK (red +)
+      mutate(Col=if_else(SynBad %in% c("Dupl"),"red",Col)) %>%
+    #i# Inv is bad (dark red X)
+      mutate(Shape=if_else(SynBad %in% c("Inv"),4,Shape)) %>%
+    #i# InvFix is special bad (dark red X in circle) [Or a blue X?]
+      mutate(Shape=if_else(SynBad %in% c("InvFix"),13,Shape)) %>%
+    #i# InvDupFix is special bad (red X in circle) [Or a red X?]
+      mutate(Shape=if_else(SynBad %in% c("InvDupFix"),13,Shape)) %>%
+      mutate(Col=if_else(SynBad %in% c("InvDupFix"),"red",Col))
+    #i# All others are bad (dark red +)
+    logWrite("#COL Added SynBad gap colours and shapes.")
+  }
+  #i# Special QC mode to drop Good rated gaps. Could also think of adding -2 for Fix rather than having squares?
+  if(settings$qcmode & "SynBad" %in% colnames(ftdb)){
+    dropn <- sum(ftdb$SynBad %in% c("Syn","Aln","Span","Ins","Long","Div"))
+    ftdb <- ftdb %>% filter(! SynBad %in% c("Syn","Aln","Span","Ins","Long","Div"))
+    logWrite(paste("#QC QC Mode: dropped",dropn,"`Good` rated SynBad gaps."))
+  }
+
   if(! "Col" %in% colnames(ftdb)){
     ftdb$Col <- colour  # Defaults to white
   }
@@ -441,7 +556,7 @@ ftTable <- function(genome,filename,colour="white",shape=22){
     ftdb$Shape <- shape  # Defaults to square (3 = + for gaps)
   }
   ftdb$Fill <- ftdb$Col
-  openrow <- ftdb$Shape %in% 21:25
+  openrow <- ftdb$Shape %in% c(-1,-2,21:25)
   if(sum(openrow)){
     ftdb[openrow,]$Col <- "black"
   }
@@ -766,17 +881,25 @@ if(nrow(busdb)){
   cat("\n", file = stderr())
   logWrite(paste('#BLOCK Generated',max(regdb$Block),"synteny blocks."))
   #i# - compress by block
-  backdb <- regdb
-  regdb <- backdb %>% group_by(Block) %>% 
+  regdb <- regdb %>% group_by(Block) %>% 
     summarise(Genome=first(Genome),HitGenome=first(HitGenome),SeqName=first(SeqName),Start=min(Start),End=max(End),Strand=first(Strand),Hit=first(Hit),HitStart=min(HitStart),HitEnd=max(HitEnd),BuscoID=n(),BuscoIDList=toString(BuscoID)) %>% 
     select(-Block) %>%
-    mutate(Length=End-Start+1,HitLength=HitEnd-HitStart+1) %>%
-    filter(Length>=settings$minregion,HitLength>=settings$minregion)
-  logWrite(paste('#BLOCK Reduced to',nrow(regdb),"synteny blocks based on minregion=INT filtering."))
+    mutate(Length=End-Start+1,HitLength=HitEnd-HitStart+1)
   if(settings$minbusco > 1){
     regdb <- filter(regdb,BuscoID>=settings$minbusco)
     logWrite(paste('#BLOCK Reduced to',nrow(regdb),"synteny blocks based on minbusco=INT filtering."))
   }
+  setminregion <- FALSE
+  regdb <- regdb %>% filter(Length>=settings$minregion,HitLength>=settings$minregion)
+  while(settings$maxregions > 0 & nrow(regdb) > settings$maxregions){
+    settings$minregion <- min(c(regdb$Length,regdb$HitLength))+1
+    regdb <- regdb %>% filter(Length>=settings$minregion,HitLength>=settings$minregion)
+    setminregion <- TRUE
+  }
+  if(setminregion){
+    logWrite(paste('#MINREG minregion=INT increased to',settings$minregion,"bp to restrict to maxregions=INT",settings$maxregions,"synteny blocks."))
+  }
+  logWrite(paste('#BLOCK Reduced to',nrow(regdb),"synteny blocks based on minregion=INT filtering."))
 }
 
 ##### ======================== Add pre-generated regdb data ======================== #####
@@ -789,7 +912,10 @@ if(settings$regdata != ""){
     linkdb <- inner_join(linkdb,seqdb %>% select(Genome,SeqName,SeqLen) %>% rename(HitGenome=Genome,Hit=SeqName)) %>% select(-SeqLen)
     linkdb <- unique(linkdb) #?# Why is this needed?!
     logWrite(paste('#REGION Reduced to',nrow(linkdb),"synteny blocks after removing filtered sequences."))
-    linkdb <- linkdb %>% mutate(BuscoID=1,BuscoIDList="-") %>% 
+    if(! "BuscoID" %in% colnames(linkdb)){
+      linkdb <- linkdb %>% mutate(BuscoID=1,BuscoIDList="-")
+    }
+    linkdb <- linkdb %>% 
       select(Genome,HitGenome,SeqName,Start,End,Strand,Hit,HitStart,HitEnd,BuscoID,Length,HitLength,BuscoIDList) %>%
       arrange(Genome,HitGenome,SeqName,Start,End)
   }
@@ -802,6 +928,17 @@ if(settings$regdata != ""){
     }
   }else{
     regdb <- linkdb
+  }
+  setminregion <- FALSE
+  regdb <- regdb %>% filter(Length>=settings$minregion,HitLength>=settings$minregion)
+  while(settings$maxregions > 0 & nrow(regdb) > settings$maxregions){
+    settings$minregion <- min(c(regdb$Length,regdb$HitLength))+1
+    regdb <- regdb %>% filter(Length>=settings$minregion,HitLength>=settings$minregion)
+    setminregion <- TRUE
+  }
+  if(setminregion){
+    logWrite(paste('#MINREG minregion=INT increased to',settings$minregion,"bp to restrict to maxregions=INT",settings$maxregions,"synteny blocks."))
+    logWrite(paste('#REGION Reduced to',nrow(regdb),"synteny blocks based on minregion=INT filtering."))
   }
 }
 #!# Currently need some linkages. Future versions should be able to plot just chromosomes.
@@ -1279,21 +1416,40 @@ if(nrow(ftdb)){
     ftdb[ftdb$Rev, ]$Pos <- ftdb[ftdb$Rev, ]$RevPos
   }
   ftdb$yshift <- ftdb$yshift + 0.5
-  #i# Update directional triangles for -1 shapes
+  #i# Update directional triangles for -1 shapes (Duplicated BUSCOs) and -2 shapes (Repeats or Breaks etc.)
+  drows <- ftdb$Strand == '.' & ftdb$Shape == -2
+  if(sum(drows) > 0){
+    ftdb[drows,]$Strand <- "+"
+    ftdb <- bind_rows(ftdb, ftdb[drows,] %>% mutate(Strand="-"))
+  }  
   if("-" %in% ftdb$Strand){
     ftdb[ftdb$Strand == '-',]$yshift <- ftdb[ftdb$Strand == '-',]$yshift - 0.4
+    # BUSCO Duplicates
     drows <- ftdb$Strand == '-' & ftdb$Shape == -1
     if(sum(drows) > 0){
       ftdb[drows,]$yshift <- ftdb[drows,]$yshift - 0.1
       ftdb[drows,]$Shape <- 25
     }
+    # Special Markers
+    drows <- ftdb$Strand == '-' & ftdb$Shape == -2
+    if(sum(drows) > 0){
+      ftdb[drows,]$yshift <- ftdb[drows,]$yshift + 0.3
+      ftdb[drows,]$Shape <- 24
+    }
   }
   if("+" %in% ftdb$Strand){
     ftdb[ftdb$Strand == '+',]$yshift <- ftdb[ftdb$Strand == '+',]$yshift + 0.4
+    # BUSCO Duplicates
     drows <- ftdb$Strand == '+' & ftdb$Shape == -1
     if(sum(drows) > 0){
       ftdb[drows,]$yshift <- ftdb[drows,]$yshift + 0.1
       ftdb[drows,]$Shape <- 24
+    }
+    # Special Markers
+    drows <- ftdb$Strand == '+' & ftdb$Shape == -2
+    if(sum(drows) > 0){
+      ftdb[drows,]$yshift <- ftdb[drows,]$yshift - 0.3
+      ftdb[drows,]$Shape <- 25
     }
   }
 }
@@ -1474,6 +1630,7 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   # Bottom ticks
   pD <- data.frame(x=tickx,y=ticky+1,yend=ticky+1+(settings$textshift/2))
   plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
+  #!# Add plotting position numbers to tickmarks
   # Features
   #?# Could have a feature type field and map colour by type?
   if(settings$debug){ logWrite(paste(nrow(ftdb),"features & gaps to plot")) }
@@ -1507,15 +1664,16 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   cat("Generating plot", file = stderr())
 
   #i# Then, plot the linkages
+  ybleed <- max(0,min(1,settings$ybleed))
   vnum <- length(linkages)
   for(v in linkages){
     #i# Setup the pair
     genomea <- settings$order[v]
     genomeb <- settings$order[v+1]
-    ya <- gendb$yshift[gendb$Genome==genomea]
-    yb <- gendb$yshift[gendb$Genome==genomeb] + 1
-    ya2 <- ya + (settings$ypad * (yb - ya))
-    yb2 <- yb - (settings$ypad * (yb - ya))
+    ya <- gendb$yshift[gendb$Genome==genomea] + ybleed
+    yb <- gendb$yshift[gendb$Genome==genomeb] + 1 - ybleed
+    ya2 <- ya + (settings$ypad * (yb - ya)) - ybleed
+    yb2 <- yb - (settings$ypad * (yb - ya)) + ybleed
     plotdb <- regdb %>% filter(Genome==genomea,HitGenome==genomeb)
     #i# Process the links for the pair
     for(i in 1:nrow(plotdb)){

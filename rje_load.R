@@ -1,7 +1,7 @@
 ########################################################
 ### RJE_LOAD: Data loading R functions         ~~~~~ ###
-### VERSION: 0.5.0                             ~~~~~ ###
-### LAST EDIT: 13/03/24                        ~~~~~ ###
+### VERSION: 0.6.0                             ~~~~~ ###
+### LAST EDIT: 20/08/24                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: richard.edwards@unsw.edu.au       ~~~~~ ###
 ########################################################
@@ -14,7 +14,8 @@
 # v0.3.0 : Set shortname=TRUE for vector input.
 # v0.4.0 : Added saveTable() function.
 # v0.5.0 : Added functions for cross-referencing genomic features with regions.
-version = "v0.5.0"
+# v0.6.0 : Added listToFasta() function for saving the sequence.
+version = "v0.6.0"
 
 ####################################### ::: SUMMARY ::: ############################################
 #i# loadTable(filename,delimit="ext") - Returns TD$headers vector of headers and TD$data tibble
@@ -22,6 +23,7 @@ version = "v0.5.0"
 #i# seqVector(filename,intvec=TRUE,shortname=TRUE) - Returns list of seqname=vector
 #i# filterTableSeq(D,seqnames,seqfield="SeqName",logid="#FILTER") - Returns filtered tibble/dataframe
 #i# saveTable(D,suffix,desc) - Generic saving of data frame to TSV file.
+#i# listToFasta(filename,seqlist,seqdesc=list(),append=FALSE) - Saves sequence from list to fasta file
 
 ####################################### ::: TODO ::: ############################################
 
@@ -180,6 +182,23 @@ saveTable <- function(df,suffix,desc){
     outfile = paste(settings$basefile,suffix,"tsv",sep=".",collapse=".")
     logWrite(paste("#SAVE",nrow(df),desc,"output to",outfile))
     write.table(df,outfile,sep="\t",quote=FALSE,row.names=FALSE)
+  }
+}
+
+### ~ Sequence list (dictionary) to FASTA ~~~~~~~~~~~~~~~~~~~~~~ ###
+# > filename: fasta file
+# > seqlist: list of name=sequence loaded from filename
+# > seqdesc: optional list of names to descriptions
+listToFasta <- function(filename,seqlist,seqdesc=list(),append=FALSE){
+  # Write output to filename
+  for(seqname in sort(names(seqlist))){
+    outname <- seqname
+    if(seqname %in% names(seqdesc)){
+      outname <- paste(seqname, seqdesc[[seqname]])
+    }
+    cat(paste0(">",outname,"\n"), file=filename,append=append)
+    append=TRUE
+    cat(paste0(seqlist[[seqname]],"\n"), file=filename, append=TRUE)
   }
 }
 
