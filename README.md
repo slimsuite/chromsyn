@@ -41,7 +41,7 @@ One easy way to generate this input:
 	
 **Step 2.** Name each input `$GENOME.fasta` and filter to just the chromosomes. (Can be done before or after running BUSCO but don't change sequence names if done afterwards.)
 	
-**Step 3.** Run [Telociraptor](https://github.com/slimsuite/telociraptor) to build a sequences table per genome and copy the ``*.telomeres.tdt` and `*.gaps.tdt` files into the directory:
+**Step 3.** Run [Telociraptor](https://github.com/slimsuite/telociraptor) to build a sequences table per genome and copy the `*.telomeres.tdt` and `*.gaps.tdt` files into the directory:
 
 ```
 python $TELOCIRAPTOR/code/telociraptor.py -seqin $FASTA -basefile ${FASTA/.fasta/} i=-1 tweak=F telonull=T
