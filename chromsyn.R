@@ -1,7 +1,7 @@
 ########################################################
 ### ChromSyn Synteny Plot functions            ~~~~~ ###
-### VERSION: 1.5.0                             ~~~~~ ###
-### LAST EDIT: 22/08/24                        ~~~~~ ###
+### VERSION: 1.6.1                             ~~~~~ ###
+### LAST EDIT: 10/09/24                        ~~~~~ ###
 ### AUTHORS: Richard Edwards 2022              ~~~~~ ###
 ### CONTACT: rich.edwards@uwa.edu.au           ~~~~~ ###
 ### CITE: Edwards et al. bioRxiv 2022.04.22.489119 ~ ###
@@ -42,7 +42,9 @@
 # v1.3.2 : Fixed bug with scale=pc mode.
 # v1.4.0 : Added plotting of repeats with a -2 shape as inverted triangles near centre. Fixed minor list argument parsing bug.
 # v1.5.0 : Added more complex plotting of gaps based on SynBad ratings and qcmode=T/F. Added maxregions=INT setting and regdata collapse to dynamically sets the min region length.
-version = "v1.5.0"
+# v1.6.0 : Moved linkage plotting to behind features.
+# v1.6.1 : Fixed cndata bug when not all CN categories present.
+version = "v1.6.1"
 
 ####################################### ::: USAGE ::: ############################################
 # Example use:
@@ -50,8 +52,8 @@ version = "v1.5.0"
 # : sequences=FOFN = File of PREFIX FILE with sequence names and lengths (name & length, or SeqName & SeqLen fields) [sequences.fofn]
 # : busco=FOFN = File of PREFIX FILE with full BUSCO table results. Used to identify orthologous regions. [busco.fofn]
 # : tidk=FOFN = Optional file of PREFIX FILE with TIDK search results. [tidk.fofn]
-# : gaps=FOFN = Optional file of PREFIX FILE with TIDK search results. [gaps.fofn]
-# : ft=FOFN = Optional file of PREFIX FILE with TIDK search results. [ft.fofn]
+# : gaps=FOFN = Optional file of PREFIX FILE with gap positions. [gaps.fofn]
+# : ft=FOFN = Optional file of PREFIX FILE with custom features. [ft.fofn]
 # : regdata=TSV = File of Genome, HitGenome, SeqName, Start, End, Strand, Hit, HitStart, HitEnd
 # : regmirror=T/F = Whether to mirror and collapse the regdata input [True]
 # : cndata=TSV = File of Genome, SeqName, Start, End, CN (Other fields OK)
@@ -1505,7 +1507,7 @@ regCol <- function(cn){
   return(cbPalette[6])
 }
 #Create a custom color scale
-cnColors <- cbPalette[c(1,5,3,6,8,7)]
+cnColors <- cbPalette    # [c(1,5,3,6,8,7)] (Reordered above)
 names(cnColors) <- c("0n", "<1n", "1n", "2n", "4n", "6+n")
 colScale <- scale_colour_manual(name = "RegCN",values = cnColors)
 
@@ -1526,11 +1528,12 @@ if(nrow(cndb) > 0){
   }
   # Set colour by CN
   cndb$ColCN <- cbPalette[6]
-  cndb[cndb$CN < 2.5,]$ColCN <- cbPalette[5]
-  cndb[cndb$CN < 1.5,]$ColCN <- cbPalette[4]
-  cndb[cndb$CN < 0.75,]$ColCN <- cbPalette[3]
-  cndb[cndb$CN < 0.33,]$ColCN <- cbPalette[2]
-  cndb[cndb$CN == 0,]$ColCN <- cbPalette[1]
+  cndb <- cndb %>% 
+    mutate(ColCN=if_else(cndb$CN < 2.5,cbPalette[5],ColCN)) %>%
+    mutate(ColCN=if_else(cndb$CN < 1.5,cbPalette[4],ColCN)) %>%
+    mutate(ColCN=if_else(cndb$CN < 0.75,cbPalette[3],ColCN)) %>%
+    mutate(ColCN=if_else(cndb$CN < 0.33,cbPalette[2],ColCN)) %>%
+    mutate(ColCN=if_else(cndb$CN == 0,cbPalette[1],ColCN))
   # Update the ftdb table by joining on Genome, SeqName and Pos.
   # Strand and Genome are optional
   if("Strand" %in% colnames(cndb) & "Genome" %in% colnames(cndb)){
@@ -1585,6 +1588,7 @@ if(settings$writexl){
 
 ### ~ Generate chromosome plot ~~~~~~~~~~~~~~~~~~~ ###
 chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
+  cat("Generating plot", file = stderr())
   if(length(linkages)<1){
     linkages <- 1:(length(settings$order)-1)
   }
@@ -1594,12 +1598,15 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   if(settings$scale == "pc"){ revshift <- 0 }
   
   #i# First, plot the chromosomes
+  cat("...genomes", file = stderr())
   pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,ymin=yshift,ymax=yshift+1) %>% 
     arrange(yshift,xshift) 
   pD$ymod[odd(1:nrow(pD))] <- 1+settings$textshift
   pD$ymod[even(1:nrow(pD))] <- -settings$textshift
   pD$texty <- pD$ymin + pD$ymod
+  pC <- pD
   plt <- ggplot()
+
   #i# Add chromosomes and set colours
   #geom_rect(data=pD, mapping=aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, fill=Genome), color="black")
   if(settings$chromfill == "Col"){
@@ -1610,60 +1617,9 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   if(settings$labels){
     plt <- plt +  annotate("text",label=pD$text,x=pD$xmin,y=pD$texty,colour="black",size=3 * settings$labelsize,hjust=0)
   }
-  #i# Add genome labels
-  pG <- group_by(pD,Genome) %>% summarise(Genome=first(Genome),ymax=min(ymax),xmin=min(xmin))
-  pG$xmin <- pG$xmin - (0.25 * settings$ticks / rescale)
-  plt <- plt +
-    annotate("text",label=pG$Genome,x=pG$xmin,y=pG$ymax,colour="black",size=4 * settings$namesize,hjust=1)
-  #i# Add tick marks
-  tickx <- c()
-  ticky <- c()
-  for(i in 1:nrow(seqdb)){
-    ntick <- as.integer(seqdb$SeqLen[i]/settings$ticks)
-    tickx <- c(tickx, 0:ntick * settings$ticks + seqdb$xshift[i])
-    ticky <- c(ticky, rep(seqdb$yshift[i],ntick+1))
-  }
-  tickx <- tickx / rescale
-  # Top ticks
-  pD <- data.frame(x=tickx,y=ticky,yend=ticky-(settings$textshift/2))
-  plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
-  # Bottom ticks
-  pD <- data.frame(x=tickx,y=ticky+1,yend=ticky+1+(settings$textshift/2))
-  plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
-  #!# Add plotting position numbers to tickmarks
-  # Features
-  #?# Could have a feature type field and map colour by type?
-  if(settings$debug){ logWrite(paste(nrow(ftdb),"features & gaps to plot")) }
-  if(nrow(ftdb)){
-    pD <- ftdb %>% mutate(xpos=(xshift+Pos)/rescale)
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,fill=pD$Fill,shape=pD$Shape,size=pD$Size)
-    if("CN" %in% colnames(ftdb) & sum(! is.na(ftdb$CN)) > 0){
-      plt <- plt + colScale
-    }
-  }
-  # Telomeres
-  pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
-  pD <- pD[ (pD$Tel5 & ! pD$Rev) | (pD$Tel3 & pD$Rev), ]
-  if(settings$debug){ logWrite(paste(nrow(pD),"5' telomeres to plot")) }
-  if(nrow(pD)){
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y),colour="black",size=pD$Size)
-  }
-  pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
-  pD <- pD[ (pD$Tel5 & pD$Rev) | (pD$Tel3 & ! pD$Rev), ]
-  if(settings$debug){ logWrite(paste(nrow(pD),"3' telomeres to plot")) }
-  if(nrow(pD)){
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y),colour="black",size=pD$Size)
-  }
-  # TIDK internal windows
-  if(settings$debug){ logWrite(paste(nrow(teldb),"3' TIDK telomeres to plot")) }
-  if(nrow(teldb)){
-    pD <- teldb %>% mutate(xpos=(xshift+Pos)/rescale)
-    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour="blue",size=pD$Size)
-  }
-
-  cat("Generating plot", file = stderr())
 
   #i# Then, plot the linkages
+  cat("...linkages", file = stderr())
   ybleed <- max(0,min(1,settings$ybleed))
   vnum <- length(linkages)
   for(v in linkages){
@@ -1728,9 +1684,63 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
     }
     cat(paste0("...(",v,") ",round(100*which(v==linkages)/vnum,1),"%"), file = stderr())
   }
-  cat("\n", file = stderr())    
+
+  #i# Add genome labels
+  cat("...labels", file = stderr())    
+  pG <- group_by(pC,Genome) %>% summarise(Genome=first(Genome),ymax=min(ymax),xmin=min(xmin))
+  pG$xmin <- pG$xmin - (0.25 * settings$ticks / rescale)
+  plt <- plt +
+    annotate("text",label=pG$Genome,x=pG$xmin,y=pG$ymax,colour="black",size=4 * settings$namesize,hjust=1)
+  #i# Add tick marks
+  tickx <- c()
+  ticky <- c()
+  for(i in 1:nrow(seqdb)){
+    ntick <- as.integer(seqdb$SeqLen[i]/settings$ticks)
+    tickx <- c(tickx, 0:ntick * settings$ticks + seqdb$xshift[i])
+    ticky <- c(ticky, rep(seqdb$yshift[i],ntick+1))
+  }
+  tickx <- tickx / rescale
+  # Top ticks
+  pD <- data.frame(x=tickx,y=ticky,yend=ticky-(settings$textshift/2))
+  plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
+  # Bottom ticks
+  pD <- data.frame(x=tickx,y=ticky+1,yend=ticky+1+(settings$textshift/2))
+  plt <- plt + geom_segment(data=pD,mapping=aes(x=x,xend=x,y=y,yend=yend),colour="black")
+  #!# Add plotting position numbers to tickmarks
+  # Features
+  cat("...features", file = stderr())    
+  #?# Could have a feature type field and map colour by type?
+  if(settings$debug){ logWrite(paste(nrow(ftdb),"features & gaps to plot")) }
+  if(nrow(ftdb)){
+    pD <- ftdb %>% mutate(xpos=(xshift+Pos)/rescale)
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour=pD$Col,fill=pD$Fill,shape=pD$Shape,size=pD$Size)
+    if("CN" %in% colnames(ftdb) & sum(! is.na(ftdb$CN)) > 0){
+      plt <- plt + colScale
+    }
+  }
+  # Telomeres
+  cat("...telomeres", file = stderr())    
+  pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
+  pD <- pD[ (pD$Tel5 & ! pD$Rev) | (pD$Tel3 & pD$Rev), ]
+  if(settings$debug){ logWrite(paste(nrow(pD),"5' telomeres to plot")) }
+  if(nrow(pD)){
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmin,y=y),colour="black",size=pD$Size)
+  }
+  pD <- seqdb %>% mutate(xmin=xshift/rescale,xmax=(xshift+SeqLen)/rescale,y=yshift+0.5)
+  pD <- pD[ (pD$Tel5 & pD$Rev) | (pD$Tel3 & ! pD$Rev), ]
+  if(settings$debug){ logWrite(paste(nrow(pD),"3' telomeres to plot")) }
+  if(nrow(pD)){
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xmax,y=y),colour="black",size=pD$Size)
+  }
+  # TIDK internal windows
+  if(settings$debug){ logWrite(paste(nrow(teldb),"3' TIDK telomeres to plot")) }
+  if(nrow(teldb)){
+    pD <- teldb %>% mutate(xpos=(xshift+Pos)/rescale)
+    plt <- plt + geom_point(data=pD,mapping=aes(x=xpos,y=yshift),colour="blue",size=pD$Size)
+  }
 
   #i# Add the theme
+  cat("...theme", file = stderr())    
   plt <- plt + theme_bw() + 
     xlab(paste0("Position (",settings$scale,")")) + ylab("") +
     theme(#legend.position = "None", 
@@ -1742,6 +1752,7 @@ chromSynPlot <- function(gendb,seqdb,regdb,linkages=c()){
   if(settings$labels){  # & ! "CN" %in% colnames(ftdb)){ #!# Need to add CN legend
     plt <- plt + theme(legend.position = "None")
   }
+  cat("\n", file = stderr())    
   return(plt)  
 }
 
